@@ -1,0 +1,5 @@
+- [x] Verifica che il file copilot-instructions.md nella directory .github sia stato creato.
+- [x] Crea la struttura base del progetto CMake con supporto Qt6.
+- [x] Aggiungi un esempio Hello World Qt6.
+- [x] Compila il progetto e verifica che non ci siano errori.
+- [ ] Aggiorna la documentazione.
