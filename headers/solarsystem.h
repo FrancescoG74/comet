@@ -7,7 +7,7 @@
 class SolarSystemController;
 
 class SolarSystem : public QWidget {
-//    Q_OBJECT
+    Q_OBJECT
 public:
     SolarSystem(QWidget *parent = nullptr);
     void initBodies();
@@ -35,7 +35,7 @@ public:
     bool getSimulationActive() const { return simulationActive; }
 
     void appendPlanet(const AstronomicalBody& planet) { planets.append(planet); }
-    void popBackPlanet() { planets.removeLast(); }
+    void popBackPlanet() { if (!planets.empty()) planets.removeLast(); }
 protected:
     void paintEvent(QPaintEvent *) override;
     void wheelEvent(QWheelEvent *event) override;

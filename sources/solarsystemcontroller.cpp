@@ -23,9 +23,9 @@ void SolarSystemController::handleKeyPress(QKeyEvent *event) {
         system->setSimulationActive(false);
         system->initBodies();
         system->update();
-    } else {
-        system->keyPressEvent(event);
     }
+    // Ignore unhandled keys - don't propagate back to avoid infinite recursion
+    event->ignore();
 }
 void SolarSystemController::handleMouseRelease(QMouseEvent *event) {
     if (!system) return;

@@ -25,18 +25,18 @@ int main(int argc, char *argv[])
     QWidget mainWidget;
     QHBoxLayout* layout = new QHBoxLayout(&mainWidget);
 
-    // Create SolarSystem and controller
-    SolarSystem* solarSystem = new SolarSystem;
-    SolarSystemController* controller = new SolarSystemController(solarSystem);
+    // Create SolarSystem (with mainWidget as parent for proper memory management)
+    SolarSystem* solarSystem = new SolarSystem(&mainWidget);
     solarSystem->setWindowTitle("Solar System");
 
     // Create planet control panel
-    PlanetControlWidget* controlPanel = new PlanetControlWidget(solarSystem);
+    PlanetControlWidget* controlPanel = new PlanetControlWidget(solarSystem, &mainWidget);
 
     layout->addWidget(solarSystem, 1);
     layout->addWidget(controlPanel);
     mainWidget.setLayout(layout);
     mainWidget.setWindowTitle("Solar System Simulation");
+    mainWidget.resize(1024, 768);
     mainWidget.show();
     return app.exec();
 }

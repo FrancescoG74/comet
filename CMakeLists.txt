@@ -11,11 +11,14 @@ find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui)
 
 add_executable(comet
     main.cpp
+    headers/planetcontrolwidget.h
+    headers/solarsystem.h
+    headers/solarsystemcontroller.h
+    headers/astronomicalbody.h
     sources/astronomicalbody.cpp
     sources/solarsystem.cpp
     sources/solarsystemcontroller.cpp
     sources/planetcontrolwidget.cpp
-        # ...other sources...
 )
 
 target_link_libraries(comet PRIVATE Qt6::Core Qt6::Widgets Qt6::Gui)

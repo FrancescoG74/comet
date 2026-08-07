@@ -1,15 +1,15 @@
 #pragma once
-//#include <QWidget>
+#include <QWidget>
 class QPushButton;
 class SolarSystem;
 
 class PlanetControlWidget : public QWidget {
-//    Q_OBJECT
+    Q_OBJECT
 public:
     PlanetControlWidget(SolarSystem* solarSystem, QWidget* parent = nullptr);
-signals:
-    void addPlanetRequested();
-    void removePlanetRequested();
+private slots:
+    void onAddPlanetClicked();
+    void onRemovePlanetClicked();
 private:
     QPushButton* addButton;
     QPushButton* removeButton;

@@ -9,7 +9,7 @@ class QMouseEvent;
 class QWheelEvent;
 
 class SolarSystemController : public QObject {
-//    Q_OBJECT
+    Q_OBJECT
 public:
     SolarSystemController(SolarSystem* system);
     void handleKeyPress(QKeyEvent* event);

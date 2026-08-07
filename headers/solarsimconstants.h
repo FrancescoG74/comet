@@ -7,8 +7,8 @@ namespace SolarSimConstants {
     constexpr double SUN_RADIUS = 40;
     constexpr double PLANET_MASS = 1000;
     constexpr double PLANET_RADIUS = 20;
-    constexpr int WINDOW_WIDTH = 1200;
-    constexpr int WINDOW_HEIGHT = 800;
+    constexpr int WINDOW_WIDTH = 1024;
+    constexpr int WINDOW_HEIGHT = 768;
     constexpr int MARGIN = 100;
     constexpr int STEPS_PER_FRAME = 5;
     constexpr double TIME_STEP = 1.0;
