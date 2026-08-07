@@ -1,4 +1,5 @@
 #include "../headers/astronomicalbody.h"
 
-AstronomicalBody::AstronomicalBody(const QVector3D& pos, const QVector3D& vel, double mass, double radius, QColor color)
-    : pos(pos), vel(vel), mass(mass), radius(radius), color(color) {}
+// AstronomicalBody is abstract - no implementation needed
+// Planet and Sun implementations are inline in the header
+

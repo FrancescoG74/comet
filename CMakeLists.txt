@@ -17,10 +17,12 @@ add_executable(comet
     headers/solarsystem.h
     headers/solarsystemcontroller.h
     headers/astronomicalbody.h
+    headers/sprite.h
     sources/astronomicalbody.cpp
     sources/solarsystem.cpp
     sources/solarsystemcontroller.cpp
     sources/planetcontrolwidget.cpp
+    sources/sprite.cpp
 )
 
 target_link_libraries(comet PRIVATE Qt6::Core Qt6::Widgets Qt6::Gui)
@@ -31,7 +33,9 @@ target_include_directories(comet PRIVATE headers)
 add_executable(comet_tests
     tests/test_main.cpp
     headers/astronomicalbody.h
+    headers/sprite.h
     sources/astronomicalbody.cpp
+    sources/sprite.cpp
 )
 
 target_link_libraries(comet_tests PRIVATE Catch2::Catch2WithMain Qt6::Core Qt6::Gui)

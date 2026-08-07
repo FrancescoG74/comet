@@ -66,7 +66,7 @@ void SolarSystemController::handleMouseRelease(QMouseEvent *event) {
             QVector3D tangent(tx/norm, ty/norm, p.vz);
             QVector3D tangentNorm = tangent.normalized();
             QVector3D vel = tangentNorm * v;
-            system->appendPlanet(AstronomicalBody(pos, vel, p.mass, p.radius, p.color));
+            system->appendPlanet(Planet(pos, vel, p.mass, p.radius, p.color));
         }
         system->setDraggingSun(false);
     }

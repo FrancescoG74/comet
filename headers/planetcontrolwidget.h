@@ -10,9 +10,12 @@ public:
 private slots:
     void onAddPlanetClicked();
     void onRemovePlanetClicked();
+    void onStartStopClicked();
 private:
     QPushButton* addButton;
     QPushButton* removeButton;
+    QPushButton* startStopButton;
     SolarSystem* system;
+    bool isRunning = false;
 
 };

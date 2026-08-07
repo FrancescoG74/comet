@@ -17,10 +17,10 @@ public:
     void setDragOffset(const QVector3D& offset) { dragOffset = offset; }
     void setLastMousePos(const QPoint& pos) { lastMousePos = pos; }
     void setRotatingView(bool rotating) { rotatingView = rotating; }
-    void setSunPosition(const QVector3D& pos) { sun.pos = pos; }
+    void setSunPosition(const QVector3D& pos) { sun.setPosition(pos); }
     void setViewPitch(double pitch) { viewPitch = pitch; }
     void setViewYaw(double yaw) { viewYaw = yaw; }
-    void setSunMass(double mass) { sun.mass = mass; }
+    void setSunMass(double mass) { sun.setMass(mass); }
     void setSimulationActive(bool active) { simulationActive = active; }
     double getZoomFactor() const { return zoomFactor; }
     QVector3D getSunPosition() const { return sun.getPosition(); }
@@ -34,7 +34,7 @@ public:
     double getSunMass() const { return sun.getMass(); }
     bool getSimulationActive() const { return simulationActive; }
 
-    void appendPlanet(const AstronomicalBody& planet) { planets.append(planet); }
+    void appendPlanet(const Planet& planet) { planets.append(planet); }
     void popBackPlanet() { if (!planets.empty()) planets.removeLast(); }
 protected:
     void paintEvent(QPaintEvent *) override;
@@ -49,8 +49,8 @@ private:
     void handleMousePress(QMouseEvent *event);
     void handleWheel(QWheelEvent *event);
     void advance();
-    AstronomicalBody sun;
-    QVector<AstronomicalBody> planets;
+    Sun sun;
+    QVector<Planet> planets;
     QTimer *timer;
     int elapsed = 0;
     bool draggingSun = false;

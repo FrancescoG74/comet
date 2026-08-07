@@ -2,6 +2,7 @@
 
 #include <QPushButton>
 #include <QHBoxLayout>
+#include <QVBoxLayout>
 #include <QWidget>
 #include <QColor>
 #include <cstdlib>
@@ -16,13 +17,22 @@ PlanetControlWidget::PlanetControlWidget(SolarSystem* solarSystem, QWidget* pare
     srand(static_cast<unsigned>(time(nullptr)));
     addButton = new QPushButton("Add Planet", this);
     removeButton = new QPushButton("Remove Planet", this);
-    auto* layout = new QHBoxLayout(this);
-    layout->addWidget(addButton);
-    layout->addWidget(removeButton);
-    setLayout(layout);
+    startStopButton = new QPushButton("Start", this);
+    
+    // Create horizontal layout for Add/Remove buttons
+    auto* horizontalLayout = new QHBoxLayout();
+    horizontalLayout->addWidget(addButton);
+    horizontalLayout->addWidget(removeButton);
+    
+    // Create main vertical layout
+    auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->addLayout(horizontalLayout);
+    mainLayout->addWidget(startStopButton);
+    setLayout(mainLayout);
 
     connect(addButton, &QPushButton::clicked, this, &PlanetControlWidget::onAddPlanetClicked);
     connect(removeButton, &QPushButton::clicked, this, &PlanetControlWidget::onRemovePlanetClicked);
+    connect(startStopButton, &QPushButton::clicked, this, &PlanetControlWidget::onStartStopClicked);
 }
 
 void PlanetControlWidget::onAddPlanetClicked()
@@ -35,7 +45,7 @@ void PlanetControlWidget::onAddPlanetClicked()
         double radius = 15;
         QColor color = Qt::yellow;
         
-        AstronomicalBody newPlanet(pos, vel, mass, radius, color);
+        Planet newPlanet(pos, vel, mass, radius, color);
         system->appendPlanet(newPlanet);
     }
 }
@@ -44,5 +54,14 @@ void PlanetControlWidget::onRemovePlanetClicked()
 {
     if (system) {
         system->popBackPlanet();
+    }
+}
+
+void PlanetControlWidget::onStartStopClicked()
+{
+    if (system) {
+        isRunning = !isRunning;
+        system->setSimulationActive(isRunning);
+        startStopButton->setText(isRunning ? "Stop" : "Start");
     }
 }

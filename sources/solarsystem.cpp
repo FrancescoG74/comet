@@ -78,7 +78,7 @@ void SolarSystem::paintEvent(QPaintEvent *) {
     rot.rotate(viewPitch, 1, 0, 0);
     // Draw 3D axes (X=red, Y=green, Z=blue) from the sun's position
     const double axisLength = 120.0;
-    QVector3D origin3D = sun.pos;
+    QVector3D origin3D = sun.getPosition();
     QVector3D xAxis3D = origin3D + QVector3D(axisLength, 0, 0);
     QVector3D yAxis3D = origin3D + QVector3D(0, axisLength, 0);
     QVector3D zAxis3D = origin3D + QVector3D(0, 0, axisLength);
@@ -100,36 +100,51 @@ void SolarSystem::paintEvent(QPaintEvent *) {
     p.drawLine(axes2D[0], axes2D[3]);
     p.setPen(oldPen);
     // Draw Sun (3D->2D projection with depth)
-    QVector3D spos = rot.map(sun.pos - QVector3D(width()/2, height()/2, 0));
+    QVector3D spos = rot.map(sun.getPosition() - QVector3D(width()/2, height()/2, 0));
     QPointF sun2D = QPointF(spos.x(), spos.y()) * zoomFactor + QPointF(width()/2, height()/2);
     double sunDepth = 1.0 / (1.0 + 0.002 * spos.z());
-    double sunRadius = sun.radius * zoomFactor * sunDepth;
-    QColor sunColor = sun.color;
-    sunColor = sunColor.lighter(100 + int(-spos.z()));
-    p.setBrush(sunColor);
-    p.drawEllipse(sun2D, sunRadius, sunRadius);
+    double sunRadius = sun.getRadius() * zoomFactor * sunDepth;
+    
+    // Draw sprite if loaded, otherwise draw colored circle
+    if (sun.getSprite().isLoaded()) {
+        const QPixmap& pixmap = sun.getSprite().getPixmap();
+        QPixmap scaled = pixmap.scaledToWidth(static_cast<int>(sunRadius * 2), Qt::SmoothTransformation);
+        p.drawPixmap(sun2D.x() - sunRadius, sun2D.y() - sunRadius, scaled);
+    } else {
+        QColor sunColor = sun.getColor();
+        sunColor = sunColor.lighter(100 + int(-spos.z()));
+        p.setBrush(sunColor);
+        p.drawEllipse(sun2D, sunRadius, sunRadius);
+    }
     // Draw Planets (3D->2D projection with depth and gradient)
     for (const auto& planet : planets) {
-        QVector3D ppos = rot.map(planet.pos - QVector3D(width()/2, height()/2, 0));
+        QVector3D ppos = rot.map(planet.getPosition() - QVector3D(width()/2, height()/2, 0));
         QPointF planet2D = QPointF(ppos.x(), ppos.y()) * zoomFactor + QPointF(width()/2, height()/2);
         double depth = 1.0 / (1.0 + 0.002 * ppos.z());
-        double pradius = planet.radius * zoomFactor * depth;
+        double pradius = planet.getRadius() * zoomFactor * depth;
 
-    // Direction from planet to sun in 2D (screen space)
-        QPointF sun2D = QPointF(sun.pos.x(), sun.pos.y());
-        QPointF planet2Dpos = QPointF(planet.pos.x(), planet.pos.y());
-        QPointF dir = sun2D - planet2Dpos;
-        double len = std::sqrt(dir.x()*dir.x() + dir.y()*dir.y());
-        QPointF gradCenter = planet2D;
-        if (len > 1e-3) {
-            QPointF offset = dir / len * pradius * 0.5; // move gradient center toward sun
-            gradCenter = planet2D + offset;
+        // Draw sprite if loaded, otherwise draw colored circle
+        if (planet.getSprite().isLoaded()) {
+            const QPixmap& pixmap = planet.getSprite().getPixmap();
+            QPixmap scaled = pixmap.scaledToWidth(static_cast<int>(pradius * 2), Qt::SmoothTransformation);
+            p.drawPixmap(planet2D.x() - pradius, planet2D.y() - pradius, scaled);
+        } else {
+            // Direction from planet to sun in 2D (screen space)
+            QPointF sun2D = QPointF(sun.getPosition().x(), sun.getPosition().y());
+            QPointF planet2Dpos = QPointF(planet.getPosition().x(), planet.getPosition().y());
+            QPointF dir = sun2D - planet2Dpos;
+            double len = std::sqrt(dir.x()*dir.x() + dir.y()*dir.y());
+            QPointF gradCenter = planet2D;
+            if (len > 1e-3) {
+                QPointF offset = dir / len * pradius * 0.5; // move gradient center toward sun
+                gradCenter = planet2D + offset;
+            }
+            QRadialGradient grad(gradCenter, pradius, gradCenter);
+            grad.setColorAt(0.0, planet.getColor()); // planet's color at sun-facing side
+            grad.setColorAt(1.0, Qt::black);    // black at shadow side
+            p.setBrush(grad);
+            p.drawEllipse(planet2D, pradius, pradius);
         }
-    QRadialGradient grad(gradCenter, pradius, gradCenter);
-    grad.setColorAt(0.0, planet.color); // planet's color at sun-facing side
-    grad.setColorAt(1.0, Qt::black);    // black at shadow side
-    p.setBrush(grad);
-    p.drawEllipse(planet2D, pradius, pradius);
     }
     // (end of paintEvent)
     p.restore();
@@ -138,13 +153,15 @@ void SolarSystem::paintEvent(QPaintEvent *) {
 
 void SolarSystem::advance() {
     for (auto& planet : planets) {
-        QVector3D r = sun.pos - planet.pos;
+        QVector3D r = sun.getPosition() - planet.getPosition();
         double dist = r.length();
         if (dist < 1) dist = 1;
-        double force = SolarSimConstants::G * sun.mass * planet.mass / (dist * dist);
-        QVector3D acc = r.normalized() * (force / planet.mass);
-        planet.vel += acc * SolarSimConstants::TIME_STEP;
-        planet.pos += planet.vel * SolarSimConstants::TIME_STEP;
+        double force = SolarSimConstants::G * sun.getMass() * planet.getMass() / (dist * dist);
+        QVector3D acc = r.normalized() * (force / planet.getMass());
+        QVector3D newVel = planet.getVelocity() + acc * SolarSimConstants::TIME_STEP;
+        planet.setVelocity(newVel);
+        QVector3D newPos = planet.getPosition() + newVel * SolarSimConstants::TIME_STEP;
+        planet.setPosition(newPos);
     }
     elapsed += 16;
     update();
@@ -160,7 +177,8 @@ void SolarSystem::handleKeyPress(QKeyEvent *event) {
 }
 
 void SolarSystem::initBodies() {
-    sun = AstronomicalBody(QVector3D(width()/2, height()/2, 0), QVector3D(0,0,0), SolarSimConstants::SUN_MASS, SolarSimConstants::SUN_RADIUS, Qt::yellow);
+    sun = Sun(QVector3D(width()/2, height()/2, 0), SolarSimConstants::SUN_MASS, SolarSimConstants::SUN_RADIUS, Qt::yellow);
+    sun.setSprite("../assets/sun-blasts-a-m66-flare.jpg");
     planets.clear();
     // Orbital parameters
     double a = (width()/2) - SolarSimConstants::MARGIN; // semi-major axis
@@ -169,7 +187,7 @@ void SolarSystem::initBodies() {
     // Sun in one of the foci
     QPointF center(width()/2, height()/2);
     double c = e * a;
-    sun.pos = QVector3D(center.x() - c, center.y(), 0); // left focus
+    sun.setPosition(QVector3D(center.x() - c, center.y(), 0)); // left focus
     struct PlanetParams {
         double a, b, angle_deg, z, vz;
         QColor color;
@@ -180,12 +198,11 @@ void SolarSystem::initBodies() {
         { a * 0.7, b * 0.7, 120, 60, -0.3, QColor(120, 255, 120), SolarSimConstants::PLANET_MASS * 0.7, SolarSimConstants::PLANET_RADIUS * 0.8 }, // green
         { a * 1.2, b * 1.2, 210, -80, 0.2, QColor(255, 180, 80), SolarSimConstants::PLANET_MASS * 1.2, SolarSimConstants::PLANET_RADIUS * 1.1 }    // orange
     };
-    sun.mass = SolarSimConstants::SUN_MASS;
-    double M = sun.mass;
+    double M = sun.getMass();
     for (const auto& p : planetParams) {
         double rad = qDegreesToRadians(p.angle_deg);
         QVector3D pos = QVector3D(center.x() + p.a * std::cos(rad), center.y() + p.b * std::sin(rad), p.z);
-        double r = std::sqrt(std::pow(pos.x() - sun.pos.x(), 2) + std::pow(pos.y() - sun.pos.y(), 2) + std::pow(pos.z() - sun.pos.z(), 2));
+        double r = std::sqrt(std::pow(pos.x() - sun.getPosition().x(), 2) + std::pow(pos.y() - sun.getPosition().y(), 2) + std::pow(pos.z() - sun.getPosition().z(), 2));
         double v = std::sqrt(SolarSimConstants::G * M * (2.0/r - 1.0/p.a));
         double tx = -p.a * std::sin(rad);
         double ty =  p.b * std::cos(rad);
@@ -194,7 +211,7 @@ void SolarSystem::initBodies() {
         QVector3D tangent(tx/norm, ty/norm, p.vz);
         QVector3D tangentNorm = tangent.normalized();
         QVector3D vel = tangentNorm * v;
-        planets.append(AstronomicalBody(pos, vel, p.mass, p.radius, p.color));
+        planets.append(Planet(pos, vel, p.mass, p.radius, p.color));
     }
 }
 
