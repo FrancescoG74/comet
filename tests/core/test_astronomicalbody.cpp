@@ -365,3 +365,47 @@ TEST_CASE("Sun with custom color", "[sun][color]") {
     
     REQUIRE(sun.getColor() == custom);
 }
+
+// ============================================================================
+// Core: Planet/Sun Name Tests (51-56)
+// ============================================================================
+
+TEST_CASE("Sun default name is Sun", "[sun][name]") {
+    Sun sun(QVector3D(), 1e6, 50, Qt::yellow);
+    
+    REQUIRE(sun.getName() == "Sun");
+}
+
+TEST_CASE("Planet with name", "[planet][name]") {
+    Planet earth(QVector3D(100, 0, 0), QVector3D(), 1000, 10, Qt::blue, "Earth");
+    
+    REQUIRE(earth.getName() == "Earth");
+}
+
+TEST_CASE("Planet default name is empty", "[planet][name]") {
+    Planet planet(QVector3D(), QVector3D(), 1000, 10, Qt::white);
+    
+    REQUIRE(planet.getName() == "");
+}
+
+TEST_CASE("All solar system planets have unique names", "[planet][name]") {
+    Planet mercury(QVector3D(), QVector3D(), 1000, 10, Qt::gray, "Mercury");
+    Planet venus(QVector3D(), QVector3D(), 1000, 10, QColor(255, 200, 100), "Venus");
+    Planet earth(QVector3D(), QVector3D(), 1000, 10, Qt::blue, "Earth");
+    Planet mars(QVector3D(), QVector3D(), 1000, 10, QColor(200, 100, 50), "Mars");
+    
+    REQUIRE(mercury.getName() == "Mercury");
+    REQUIRE(venus.getName() == "Venus");
+    REQUIRE(earth.getName() == "Earth");
+    REQUIRE(mars.getName() == "Mars");
+    REQUIRE(mercury.getName() != venus.getName());
+    REQUIRE(venus.getName() != earth.getName());
+    REQUIRE(earth.getName() != mars.getName());
+}
+
+TEST_CASE("Planet name can be updated", "[planet][name]") {
+    Planet planet(QVector3D(), QVector3D(), 1000, 10, Qt::blue, "Earth");
+    
+    planet.setName("New Planet");
+    REQUIRE(planet.getName() == "New Planet");
+}

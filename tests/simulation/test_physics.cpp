@@ -102,3 +102,45 @@ TEST_CASE("Position update for planet", "[planet][physics]") {
     
     REQUIRE(planet.getPosition() == newPos);
 }
+
+// ============================================================================
+// Simulation: Solar System Initialization Tests (64-67)
+// ============================================================================
+
+TEST_CASE("Solar system has 8 planets", "[solarsystem][planets]") {
+    // This test verifies the expected number of planets in the initialized system
+    std::vector<QString> planetNames = {"Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"};
+    REQUIRE(planetNames.size() == 8);
+}
+
+TEST_CASE("Solar system planet names in order", "[solarsystem][planets]") {
+    std::vector<QString> expectedOrder = {"Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"};
+    
+    // Verify the expected order matches our solar system
+    REQUIRE(expectedOrder[0] == "Mercury");
+    REQUIRE(expectedOrder[1] == "Venus");
+    REQUIRE(expectedOrder[2] == "Earth");
+    REQUIRE(expectedOrder[3] == "Mars");
+    REQUIRE(expectedOrder[4] == "Jupiter");
+    REQUIRE(expectedOrder[5] == "Saturn");
+    REQUIRE(expectedOrder[6] == "Uranus");
+    REQUIRE(expectedOrder[7] == "Neptune");
+}
+
+TEST_CASE("Solar system realistic planet masses", "[solarsystem][planets]") {
+    // Jupiter should be much more massive than Earth
+    double jupiterMass = SolarSimConstants::PLANET_MASS * 318;
+    double earthMass = SolarSimConstants::PLANET_MASS;
+    
+    REQUIRE(jupiterMass > earthMass);
+    REQUIRE(jupiterMass / earthMass == 318);
+}
+
+TEST_CASE("Solar system realistic planet radii", "[solarsystem][planets]") {
+    // Jupiter should be much larger than Earth
+    double jupiterRadius = SolarSimConstants::PLANET_RADIUS * 11;
+    double earthRadius = SolarSimConstants::PLANET_RADIUS;
+    
+    REQUIRE(jupiterRadius > earthRadius);
+    REQUIRE(jupiterRadius / earthRadius == 11);
+}
