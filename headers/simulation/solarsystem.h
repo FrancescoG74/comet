@@ -2,6 +2,7 @@
 #include <QWidget>
 #include <QTimer>
 #include <QVector>
+#include <memory>
 #include "astronomicalbody.h"
 
 class SolarSystemController;
@@ -51,7 +52,7 @@ private:
     void advance();
     Sun sun;
     QVector<Planet> planets;
-    QTimer *timer;
+    std::unique_ptr<QTimer> timer;
     int elapsed = 0;
     bool draggingSun = false;
     QVector3D dragOffset;
@@ -62,5 +63,5 @@ private:
     double viewPitch = 0.0; // rotation around X (vertical)
     bool rotatingView = false;
     QPoint lastMousePos;
-    SolarSystemController* controller = nullptr;
+    std::unique_ptr<SolarSystemController> controller;
 };

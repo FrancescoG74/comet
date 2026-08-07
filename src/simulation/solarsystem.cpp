@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <memory>
 #include <QWheelEvent>
 #include <QMouseEvent>
 #include <QPainter>
@@ -7,7 +8,7 @@
 #include <QKeyEvent>
 #include <QtMath>
 
-#include "../headers/solarsimconstants.h"
+#include "solarsimconstants.h"
 #include "solarsystem.h"
 #include "solarsystemcontroller.h"
 
@@ -39,8 +40,8 @@ void SolarSystem::handleMouseMove(QMouseEvent *event) {
 
 SolarSystem::SolarSystem(QWidget *parent) : QWidget(parent) {
     setFixedSize(SolarSimConstants::WINDOW_WIDTH, SolarSimConstants::WINDOW_HEIGHT);
-    timer = new QTimer(this);
-    connect(timer, &QTimer::timeout, this, [this]() {
+    timer = std::make_unique<QTimer>(this);
+    connect(timer.get(), &QTimer::timeout, this, [this]() {
         if (simulationActive) {
             for (int i = 0; i < SolarSimConstants::STEPS_PER_FRAME; ++i) advance();
         }
@@ -48,7 +49,7 @@ SolarSystem::SolarSystem(QWidget *parent) : QWidget(parent) {
     });
     timer->start(SolarSimConstants::TIMER_INTERVAL_MS);
     setFocusPolicy(Qt::StrongFocus);
-    controller = new SolarSystemController(this);
+    controller = std::make_unique<SolarSystemController>(this);
     initBodies();
 }
 

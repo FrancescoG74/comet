@@ -1,5 +1,6 @@
 #include <iostream>
 
+#include <memory>
 #include <QPushButton>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -15,24 +16,24 @@
 PlanetControlWidget::PlanetControlWidget(SolarSystem* solarSystem, QWidget* parent)
     : QWidget(parent), system(solarSystem){
     srand(static_cast<unsigned>(time(nullptr)));
-    addButton = new QPushButton("Add Planet", this);
-    removeButton = new QPushButton("Remove Planet", this);
-    startStopButton = new QPushButton("Start", this);
+    addButton = std::make_unique<QPushButton>("Add Planet", this);
+    removeButton = std::make_unique<QPushButton>("Remove Planet", this);
+    startStopButton = std::make_unique<QPushButton>("Start", this);
     
     // Create horizontal layout for Add/Remove buttons
     auto* horizontalLayout = new QHBoxLayout();
-    horizontalLayout->addWidget(addButton);
-    horizontalLayout->addWidget(removeButton);
+    horizontalLayout->addWidget(addButton.get());
+    horizontalLayout->addWidget(removeButton.get());
     
     // Create main vertical layout
     auto* mainLayout = new QVBoxLayout(this);
     mainLayout->addLayout(horizontalLayout);
-    mainLayout->addWidget(startStopButton);
+    mainLayout->addWidget(startStopButton.get());
     setLayout(mainLayout);
 
-    connect(addButton, &QPushButton::clicked, this, &PlanetControlWidget::onAddPlanetClicked);
-    connect(removeButton, &QPushButton::clicked, this, &PlanetControlWidget::onRemovePlanetClicked);
-    connect(startStopButton, &QPushButton::clicked, this, &PlanetControlWidget::onStartStopClicked);
+    connect(addButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onAddPlanetClicked);
+    connect(removeButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onRemovePlanetClicked);
+    connect(startStopButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onStartStopClicked);
 }
 
 void PlanetControlWidget::onAddPlanetClicked()

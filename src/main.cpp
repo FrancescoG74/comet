@@ -9,9 +9,9 @@
 #include <QVector>
 
 
-#include "headers/solarsystem.h"
-#include "headers/planetcontrolwidget.h"
-#include "headers/solarsystemcontroller.h"
+#include "solarsystem.h"
+#include "planetcontrolwidget.h"
+#include "solarsystemcontroller.h"
 #include <QHBoxLayout>
 
 

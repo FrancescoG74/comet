@@ -7,6 +7,15 @@ class Sprite {
 public:
     Sprite();
     explicit Sprite(const QString& imagePath);
+    ~Sprite() = default;
+    
+    // Copy semantics (Qt objects are copyable and shareable)
+    Sprite(const Sprite&) = default;
+    Sprite& operator=(const Sprite&) = default;
+    
+    // Move semantics
+    Sprite(Sprite&&) noexcept = default;
+    Sprite& operator=(Sprite&&) noexcept = default;
     
     // Load image from file
     bool loadImage(const QString& imagePath);

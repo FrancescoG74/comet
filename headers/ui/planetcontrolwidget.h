@@ -1,6 +1,7 @@
 #pragma once
 #include <QWidget>
-class QPushButton;
+#include <memory>
+#include <QPushButton>
 class SolarSystem;
 
 class PlanetControlWidget : public QWidget {
@@ -12,10 +13,10 @@ private slots:
     void onRemovePlanetClicked();
     void onStartStopClicked();
 private:
-    QPushButton* addButton;
-    QPushButton* removeButton;
-    QPushButton* startStopButton;
-    SolarSystem* system;
+    std::unique_ptr<QPushButton> addButton;
+    std::unique_ptr<QPushButton> removeButton;
+    std::unique_ptr<QPushButton> startStopButton;
+    SolarSystem* system;  // non-owning pointer
     bool isRunning = false;
 
 };

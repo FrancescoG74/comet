@@ -1,4 +1,4 @@
-#include "../headers/sprite.h"
+#include "core/sprite.h"
 
 Sprite::Sprite() : loaded(false) {
 }
