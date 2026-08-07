@@ -45,8 +45,24 @@ public:
     QVector3D getVelocity() const { return vel; }
     void setVelocity(const QVector3D& velocity) { vel = velocity; }
     
+    // Orbital parameters (set at initialization for visualization)
+    void setOrbitalParams(double sma, double ecc, double incl, double sunPosX) {
+        semiMajorAxis = sma;
+        eccentricity = ecc;
+        inclination = incl;
+        sunX = sunPosX;
+    }
+    double getSemiMajorAxis() const { return semiMajorAxis; }
+    double getEccentricity() const { return eccentricity; }
+    double getInclination() const { return inclination; }
+    double getSunX() const { return sunX; }
+    
 private:
     QVector3D vel;
+    double semiMajorAxis = 0;
+    double eccentricity = 0;
+    double inclination = 0;
+    double sunX = 0;
 };
 
 // Concrete class for the sun - static, no velocity

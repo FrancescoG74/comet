@@ -31,6 +31,9 @@ int main(int argc, char *argv[])
 
     // Create planet control panel
     PlanetControlWidget* controlPanel = new PlanetControlWidget(solarSystem, &mainWidget);
+    
+    // Connect control panel to solar system so it can update button on spacebar
+    solarSystem->setControlWidget(controlPanel);
 
     layout->addWidget(solarSystem, 1);
     layout->addWidget(controlPanel);

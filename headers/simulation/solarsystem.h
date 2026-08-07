@@ -6,11 +6,13 @@
 #include "astronomicalbody.h"
 
 class SolarSystemController;
+class PlanetControlWidget;
 
 class SolarSystem : public QWidget {
     Q_OBJECT
 public:
     SolarSystem(QWidget *parent = nullptr);
+    void setControlWidget(PlanetControlWidget* widget) { controlWidget = widget; }
     void initBodies();
     void keyPressEvent(QKeyEvent *event) override;
     void setZoomFactor(double zf) { zoomFactor = zf; }
@@ -23,6 +25,12 @@ public:
     void setViewYaw(double yaw) { viewYaw = yaw; }
     void setSunMass(double mass) { sun.setMass(mass); }
     void setSimulationActive(bool active) { simulationActive = active; }
+    void setSimulationSpeedMultiplier(double multiplier) { speedMultiplier = std::max(0.1, multiplier); }
+    void resetView() {
+        zoomFactor = 0.7;
+        viewPitch = -35.0;
+        viewYaw = 15.0;
+    }
     double getZoomFactor() const { return zoomFactor; }
     QVector3D getSunPosition() const { return sun.getPosition(); }
     double getSunRadius() const { return sun.getRadius(); }
@@ -37,6 +45,8 @@ public:
 
     void appendPlanet(const Planet& planet) { planets.append(planet); }
     void popBackPlanet() { if (!planets.empty()) planets.removeLast(); }
+    
+    PlanetControlWidget* controlWidget = nullptr;
 protected:
     void paintEvent(QPaintEvent *) override;
     void wheelEvent(QWheelEvent *event) override;
@@ -58,6 +68,7 @@ private:
     QVector3D dragOffset;
     bool simulationActive = false;
     double zoomFactor = 1.0;
+    double speedMultiplier = 0.1;  // Start 10x slower
     // 3D visual rotation
     double viewYaw = 0.0;   // rotation around Y (horizontal)
     double viewPitch = 0.0; // rotation around X (vertical)

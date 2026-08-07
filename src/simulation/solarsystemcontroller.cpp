@@ -1,6 +1,7 @@
 #include "astronomicalbody.h"
 #include "solarsystemcontroller.h"
 #include "solarsystem.h"
+#include "planetcontrolwidget.h"
 #include "solarsimconstants.h"
 #include <QWheelEvent>
 #include <QMouseEvent>
@@ -19,9 +20,21 @@ void SolarSystemController::handleKeyPress(QKeyEvent *event) {
         QApplication::quit();
     } else if (event->key() == Qt::Key_Space) {
         system->setSimulationActive(!system->getSimulationActive());
+        // Update button state when spacebar is pressed
+        if (system->controlWidget) {
+            system->controlWidget->updateButtonState(system->getSimulationActive());
+        }
     } else if (event->key() == Qt::Key_R) {
         system->setSimulationActive(false);
         system->initBodies();
+        system->update();
+        // Update button state when reset
+        if (system->controlWidget) {
+            system->controlWidget->updateButtonState(false);
+        }
+    } else if (event->key() == Qt::Key_V) {
+        // Reset view to overview (V for View)
+        system->resetView();
         system->update();
     }
     // Ignore unhandled keys - don't propagate back to avoid infinite recursion

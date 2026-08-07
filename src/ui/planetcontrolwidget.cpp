@@ -2,6 +2,8 @@
 
 #include <memory>
 #include <QPushButton>
+#include <QSlider>
+#include <QLabel>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -19,21 +21,37 @@ PlanetControlWidget::PlanetControlWidget(SolarSystem* solarSystem, QWidget* pare
     addButton = std::make_unique<QPushButton>("Add Planet", this);
     removeButton = std::make_unique<QPushButton>("Remove Planet", this);
     startStopButton = std::make_unique<QPushButton>("Start", this);
+    speedSlider = std::make_unique<QSlider>(Qt::Horizontal, this);
+    speedLabel = std::make_unique<QLabel>("Speed: 1.0x", this);
+    
+    // Configure speed slider (range: 10 to 500, representing 0.1x to 5.0x speed)
+    speedSlider->setMinimum(10);
+    speedSlider->setMaximum(500);
+    speedSlider->setValue(10);  // Default: 0.1x (10x slower)
+    speedSlider->setTickPosition(QSlider::TicksBelow);
+    speedSlider->setTickInterval(50);
     
     // Create horizontal layout for Add/Remove buttons
     auto* horizontalLayout = new QHBoxLayout();
     horizontalLayout->addWidget(addButton.get());
     horizontalLayout->addWidget(removeButton.get());
     
+    // Create speed control layout
+    auto* speedLayout = new QHBoxLayout();
+    speedLayout->addWidget(speedLabel.get());
+    speedLayout->addWidget(speedSlider.get());
+    
     // Create main vertical layout
     auto* mainLayout = new QVBoxLayout(this);
     mainLayout->addLayout(horizontalLayout);
     mainLayout->addWidget(startStopButton.get());
+    mainLayout->addLayout(speedLayout);
     setLayout(mainLayout);
 
     connect(addButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onAddPlanetClicked);
     connect(removeButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onRemovePlanetClicked);
     connect(startStopButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onStartStopClicked);
+    connect(speedSlider.get(), QOverload<int>::of(&QSlider::valueChanged), this, &PlanetControlWidget::onSimulationSpeedChanged);
 }
 
 void PlanetControlWidget::onAddPlanetClicked()
@@ -65,4 +83,21 @@ void PlanetControlWidget::onStartStopClicked()
         system->setSimulationActive(isRunning);
         startStopButton->setText(isRunning ? "Stop" : "Start");
     }
+}
+
+void PlanetControlWidget::updateButtonState(bool isRunning)
+{
+    this->isRunning = isRunning;
+    startStopButton->setText(isRunning ? "Stop" : "Start");
+}
+
+void PlanetControlWidget::onSimulationSpeedChanged(int value)
+{
+    // Convert slider value (10-500) to speed multiplier (0.1x - 5.0x)
+    double speedMultiplier = value / 100.0;
+    if (system) {
+        system->setSimulationSpeedMultiplier(speedMultiplier);
+    }
+    // Update label
+    speedLabel->setText(QString("Speed: %1x").arg(speedMultiplier, 0, 'f', 1));
 }

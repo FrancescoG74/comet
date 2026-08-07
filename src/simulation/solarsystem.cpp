@@ -53,6 +53,15 @@ SolarSystem::SolarSystem(QWidget *parent) : QWidget(parent) {
     timer->start(SolarSimConstants::TIMER_INTERVAL_MS);
     setFocusPolicy(Qt::StrongFocus);
     controller = std::make_unique<SolarSystemController>(this);
+    
+    // Set camera for optimal overview of entire solar system
+    // Zoom out slightly to fit all planets (Mercury to Neptune)
+    zoomFactor = 0.7;
+    // Look down at the orbital plane at ~35 degree angle
+    viewPitch = -35.0;
+    // Slight yaw for 3D perspective
+    viewYaw = 15.0;
+    
     initBodies();
 }
 
@@ -63,6 +72,16 @@ static inline bool isValidPoint(const QPointF& pt) {
 
 static inline bool isValidRadius(double r) {
     return std::isfinite(r) && r > 0;
+}
+
+// Apply non-linear scaling to planet sizes for better visibility
+// Maps realistic size ratios to visible screen sizes
+static double scalePlanetRadius(double realRadius) {
+    // Use a power function: scaled = pow(realRadius, 0.6)
+    // This makes small planets more visible while keeping giants reasonable
+    // Example: Mercury (0.383) -> ~0.62, Jupiter (10.97) -> ~4.2 in relative scale
+    if (realRadius <= 0) return 0;
+    return std::pow(realRadius, 0.65) * SolarSimConstants::PLANET_RADIUS;
 }
 
 void SolarSystem::paintEvent(QPaintEvent *) {
@@ -140,12 +159,62 @@ void SolarSystem::paintEvent(QPaintEvent *) {
             p.drawEllipse(sun2D, sunRadius, sunRadius);
         }
     }
-    // Draw Planets (3D->2D projection with depth and gradient)
+    // Draw orbital paths (faint ellipses)
+    p.setPen(QPen(QColor(100, 100, 100, 100), 1, Qt::DashLine));
+    for (const auto& planet : planets) {
+        double a = planet.getSemiMajorAxis();
+        double e = planet.getEccentricity();
+        double b = a * std::sqrt(1.0 - e*e);
+        double c = e * a;
+        
+        if (a > 0 && b > 0) {
+            // Orbital ellipse center (sun at left focus)
+            double ellipseCenterX = planet.getSunX() + c;
+            QPointF ellipseCenter = QPointF(ellipseCenterX, center.y());
+            
+            // Draw ellipse (note: QRect takes top-left corner)
+            QRectF ellipseRect(ellipseCenter.x() - a * zoomFactor, 
+                              ellipseCenter.y() - b * zoomFactor,
+                              2 * a * zoomFactor, 
+                              2 * b * zoomFactor);
+            p.drawEllipse(ellipseRect);
+        }
+    }
+    p.setPen(oldPen);
+    
+    // Painter's Algorithm: Sort planets by depth (z-coordinate) for proper occlusion
+    struct PlanetRenderData {
+        const AstronomicalBody* planet;
+        QVector3D rotatedPos;  // Position after 3D rotation
+        double z_depth;        // Z-coordinate for sorting (farther = lower z)
+    };
+    
+    std::vector<PlanetRenderData> renderQueue;
+    
+    // Calculate depth for each planet
     for (const auto& planet : planets) {
         QVector3D ppos = rot.map(planet.getPosition() - QVector3D(width()/2, height()/2, 0));
+        renderQueue.push_back({&planet, ppos, ppos.z()});
+    }
+    
+    // Sort by depth: farther objects (lower z) first, closer objects (higher z) last
+    std::sort(renderQueue.begin(), renderQueue.end(),
+              [](const PlanetRenderData& a, const PlanetRenderData& b) {
+                  return a.z_depth < b.z_depth;  // Ascending order: farthest first
+              });
+    
+    // Draw Planets in sorted order (Painter's Algorithm)
+    for (const auto& renderData : renderQueue) {
+        const AstronomicalBody& planet = *renderData.planet;
+        QVector3D ppos = renderData.rotatedPos;
         QPointF planet2D = QPointF(ppos.x(), ppos.y()) * zoomFactor + QPointF(width()/2, height()/2);
         double depth = 1.0 / std::max(0.001, 1.0 + 0.002 * ppos.z());
-        double pradius = planet.getRadius() * zoomFactor * depth;
+        
+        // Use scaled radius for better visibility (non-linear scaling)
+        // Get the actual radius ratio (relative to PLANET_RADIUS)
+        double radiusRatio = planet.getRadius() / SolarSimConstants::PLANET_RADIUS;
+        double scaledRadius = scalePlanetRadius(radiusRatio);
+        double pradius = scaledRadius * zoomFactor * depth;
         
         // Skip if point or radius is invalid
         if (!isValidPoint(planet2D) || !isValidRadius(pradius)) continue;
@@ -219,9 +288,10 @@ void SolarSystem::advance() {
         if (dist < 1) dist = 1;
         double force = SolarSimConstants::G * sun.getMass() * planet.getMass() / (dist * dist);
         QVector3D acc = r.normalized() * (force / planet.getMass());
-        QVector3D newVel = planet.getVelocity() + acc * SolarSimConstants::TIME_STEP;
+        // Apply speed multiplier to acceleration
+        QVector3D newVel = planet.getVelocity() + acc * SolarSimConstants::TIME_STEP * speedMultiplier;
         planet.setVelocity(newVel);
-        QVector3D newPos = planet.getPosition() + newVel * SolarSimConstants::TIME_STEP;
+        QVector3D newPos = planet.getPosition() + newVel * SolarSimConstants::TIME_STEP * speedMultiplier;
         planet.setPosition(newPos);
     }
     elapsed += 16;
@@ -241,55 +311,123 @@ void SolarSystem::initBodies() {
     sun = Sun(QVector3D(width()/2, height()/2, 0), SolarSimConstants::SUN_MASS, SolarSimConstants::SUN_RADIUS, Qt::yellow);
     sun.setSprite("../assets/sun-blasts-a-m66-flare.jpg");
     planets.clear();
-    // Orbital parameters
-    double a = (width()/2) - SolarSimConstants::MARGIN; // semi-major axis
-    double b = (height()/2) - SolarSimConstants::MARGIN; // semi-minor axis
-    double e = std::sqrt(1.0 - (b*b)/(a*a)); // eccentricity
-    // Sun in one of the foci
+    
+    // Display scale: Use logarithmic scaling for better distribution of inner/outer planets
+    // Linear scale compresses inner planets. Logarithmic scale spreads them out.
+    // displayDist = log(1 + distance_AU) * scale
+    double maxDisplayDist = ((width()/2) - SolarSimConstants::MARGIN);
+    double maxAU = 30.0; // Neptune's semi-major axis
+    double displayScale = maxDisplayDist / std::log(1.0 + maxAU); // scale factor for log scale
+    
+    auto logScale = [displayScale](double au) {
+        return std::log(1.0 + au) * displayScale;
+    };
+    
     QPointF center(width()/2, height()/2);
-    double c = e * a;
-    sun.setPosition(QVector3D(center.x() - c, center.y(), 0)); // left focus
+    
     struct PlanetParams {
-        double a, b, angle_deg, z, vz;
+        // Orbital parameters (real solar system values)
+        double semiMajorAxis_AU;  // Semi-major axis in Astronomical Units
+        double eccentricity;       // Orbital eccentricity
+        double inclination_deg;    // Orbital inclination (degrees)
+        double meanAnomaly_deg;    // Mean anomaly at epoch (starting angle)
+        
+        // Physical properties (relative to Earth)
+        double massEarthRatios;    // Mass relative to Earth
+        double radiusEarthRatios;  // Radius relative to Earth
+        
         QColor color;
-        double mass, radius;
         QString name;
     };
+    
+    // Real solar system data
     std::vector<PlanetParams> planetParams = {
-        { a * 0.25, b * 0.25,  0,   0,   0.5, QColor(169, 169, 169), SolarSimConstants::PLANET_MASS * 0.38, SolarSimConstants::PLANET_RADIUS * 0.38, "Mercury" },
-        { a * 0.45, b * 0.45, 45,  20,  -0.3, QColor(255, 200, 100), SolarSimConstants::PLANET_MASS * 0.95, SolarSimConstants::PLANET_RADIUS * 0.95, "Venus" },
-        { a * 0.65, b * 0.65, 90, -40,   0.2, QColor(70, 120, 255),  SolarSimConstants::PLANET_MASS,        SolarSimConstants::PLANET_RADIUS,        "Earth" },
-        { a * 0.80, b * 0.80, 135, 50,   0.4, QColor(200, 100, 50),  SolarSimConstants::PLANET_MASS * 0.53, SolarSimConstants::PLANET_RADIUS * 0.53, "Mars" },
-        { a * 1.05, b * 1.05, 180, -60,  -0.2, QColor(180, 140, 80), SolarSimConstants::PLANET_MASS * 318,  SolarSimConstants::PLANET_RADIUS * 11,   "Jupiter" },
-        { a * 1.30, b * 1.30, 225, 70,   0.3, QColor(220, 200, 100), SolarSimConstants::PLANET_MASS * 95,   SolarSimConstants::PLANET_RADIUS * 9,    "Saturn" },
-        { a * 1.50, b * 1.50, 270, -80,  -0.15, QColor(100, 180, 200), SolarSimConstants::PLANET_MASS * 14,   SolarSimConstants::PLANET_RADIUS * 4,    "Uranus" },
-        { a * 1.70, b * 1.70, 315, 40,   0.25, QColor(50, 100, 200), SolarSimConstants::PLANET_MASS * 17,   SolarSimConstants::PLANET_RADIUS * 3.9,  "Neptune" }
+        // Mercury: 0.387 AU, high eccentricity, gray
+        { 0.387, 0.206, 7.0,   0,   0.055, 0.383, QColor(169, 169, 169), "Mercury" },
+        // Venus: 0.723 AU, low eccentricity, yellowish
+        { 0.723, 0.007, 3.39,  45,  0.815, 0.949, QColor(255, 200, 100), "Venus" },
+        // Earth: 1.0 AU, reference, blue
+        { 1.0,   0.017, 0.0,   90,  1.0,   1.0,   QColor(70, 120, 255),  "Earth" },
+        // Mars: 1.524 AU, moderate eccentricity, reddish
+        { 1.524, 0.093, 1.85,  135, 0.107, 0.532, QColor(200, 100, 50),  "Mars" },
+        // Jupiter: 5.203 AU, large and massive
+        { 5.203, 0.049, 2.86,  180, 317.8, 10.97, QColor(180, 140, 80),  "Jupiter" },
+        // Saturn: 9.537 AU, very large
+        { 9.537, 0.056, 2.75,  225, 95.2,  9.14,  QColor(220, 200, 100), "Saturn" },
+        // Uranus: 19.191 AU, cyan
+        { 19.191, 0.047, 0.77, 270, 14.5,  3.98,  QColor(100, 180, 200), "Uranus" },
+        // Neptune: 30.069 AU, deep blue, low eccentricity
+        { 30.069, 0.009, 1.77, 315, 17.1,  3.86,  QColor(50, 100, 200),  "Neptune" }
     };
+    
     double M = sun.getMass();
     for (const auto& p : planetParams) {
-        double rad = qDegreesToRadians(p.angle_deg);
-        QVector3D pos = QVector3D(center.x() + p.a * std::cos(rad), center.y() + p.b * std::sin(rad), p.z);
-        double r = std::sqrt(std::pow(pos.x() - sun.getPosition().x(), 2) + std::pow(pos.y() - sun.getPosition().y(), 2) + std::pow(pos.z() - sun.getPosition().z(), 2));
+        // Convert AU to display pixels using logarithmic scale
+        // This compresses inner planets while spreading outer planets
+        double a = logScale(p.semiMajorAxis_AU);
+        double e = p.eccentricity;
         
-        // Calculate orbital velocity using vis-viva equation: v = sqrt(GM * (2/r - 1/a))
-        // If this produces NaN (when 2/r - 1/a < 0), use circular orbit velocity instead
-        double v_virial = 2.0/r - 1.0/p.a;
+        // Calculate semi-minor axis from eccentricity: b = a * sqrt(1 - e²)
+        double b = a * std::sqrt(1.0 - e*e);
+        
+        // Convert angles to radians
+        double inc_rad = qDegreesToRadians(p.inclination_deg);
+        double anom_rad = qDegreesToRadians(p.meanAnomaly_deg);
+        
+        // Position in orbital plane (ellipse): x = a*cos(θ), y = b*sin(θ)
+        // With eccentricity applied: distance from center varies
+        double cos_anom = std::cos(anom_rad);
+        double sin_anom = std::sin(anom_rad);
+        
+        // Elliptical position
+        double x_orbit = a * cos_anom;
+        double y_orbit = b * sin_anom;
+        
+        // Apply orbital inclination (rotate around x-axis for inclination)
+        // This tilts the orbital plane relative to the ecliptic
+        double x_inclined = x_orbit;
+        double y_inclined = y_orbit * std::cos(inc_rad);
+        double z_inclined = y_orbit * std::sin(inc_rad);
+        
+        // Position relative to sun (sun at one focus)
+        double c = e * a;  // distance from center to focus
+        QVector3D pos = QVector3D(center.x() + x_inclined - c, center.y() + y_inclined, z_inclined);
+        
+        // Calculate orbital velocity using vis-viva equation
+        // r is distance from sun to planet
+        double r = std::sqrt(std::pow(pos.x() - sun.getPosition().x(), 2) + 
+                            std::pow(pos.y() - sun.getPosition().y(), 2) + 
+                            std::pow(pos.z() - sun.getPosition().z(), 2));
+        
+        // v = sqrt(GM * (2/r - 1/a))
+        double v_virial = 2.0/r - 1.0/a;
         double v = 0.0;
         if (v_virial > 0) {
             v = std::sqrt(SolarSimConstants::G * M * v_virial);
         } else {
-            // Fallback: use circular orbit velocity v = sqrt(GM/r)
             v = std::sqrt(SolarSimConstants::G * M / r);
         }
         
-        double tx = -p.a * std::sin(rad);
-        double ty =  p.b * std::cos(rad);
-        double tz = 0;
+        // Tangent vector in orbital plane (perpendicular to radius)
+        double tx = -b * sin_anom;
+        double ty =  a * cos_anom * std::cos(inc_rad);
+        double tz =  a * cos_anom * std::sin(inc_rad);
         double norm = std::sqrt(tx*tx + ty*ty + tz*tz);
-        QVector3D tangent(tx/norm, ty/norm, p.vz);
-        QVector3D tangentNorm = tangent.normalized();
-        QVector3D vel = tangentNorm * v;
-        planets.append(Planet(pos, vel, p.mass, p.radius, p.color, p.name));
+        
+        if (norm > 1e-6) {
+            QVector3D tangent(tx/norm, ty/norm, tz/norm);
+            QVector3D tangentNorm = tangent.normalized();
+            QVector3D vel = tangentNorm * v;
+            
+            // Calculate realistic mass and radius
+            double mass = p.massEarthRatios * SolarSimConstants::PLANET_MASS;
+            double radius = p.radiusEarthRatios * SolarSimConstants::PLANET_RADIUS;
+            
+            Planet planet(pos, vel, mass, radius, p.color, p.name);
+            // Store orbital parameters for visualization
+            planet.setOrbitalParams(a, e, inc_rad, sun.getPosition().x());
+            planets.append(planet);
+        }
     }
 }
 
