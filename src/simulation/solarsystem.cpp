@@ -184,7 +184,8 @@ void SolarSystem::paintEvent(QPaintEvent *) {
     // Painter's Algorithm: Sort sun and planets by depth (z-coordinate) for proper occlusion
     struct CelestialRenderData {
         const AstronomicalBody* body;
-        bool isSun;                 // Track if this is the sun or a planet
+        bool isSun;                 // Track if this is the sun
+        bool isSatellite;           // Track if this is a satellite
         QVector3D rotatedPos;       // Position after 3D rotation
         double z_depth;             // Z-coordinate for sorting (higher = farther)
     };
@@ -193,12 +194,18 @@ void SolarSystem::paintEvent(QPaintEvent *) {
     
     // Add sun to render queue
     QVector3D sunRotated = rot.map(sun.getPosition() - QVector3D(width()/2, height()/2, 0));
-    renderQueue.push_back({&sun, true, sunRotated, sunRotated.z()});
+    renderQueue.push_back({&sun, true, false, sunRotated, sunRotated.z()});
     
     // Add all planets to render queue
     for (const auto& planet : planets) {
         QVector3D ppos = rot.map(planet.getPosition() - QVector3D(width()/2, height()/2, 0));
-        renderQueue.push_back({&planet, false, ppos, ppos.z()});
+        renderQueue.push_back({&planet, false, false, ppos, ppos.z()});
+    }
+    
+    // Add all satellites to render queue
+    for (const auto& satellite : satellites) {
+        QVector3D spos = rot.map(satellite.getPosition() - QVector3D(width()/2, height()/2, 0));
+        renderQueue.push_back({&satellite, false, true, spos, spos.z()});
     }
     
     // Sort by depth: farther objects (higher z) first, closer objects (lower z) last
@@ -218,6 +225,11 @@ void SolarSystem::paintEvent(QPaintEvent *) {
         if (renderData.isSun) {
             // Sun uses its astronomical radius directly
             radius = body.getRadius() * SolarSimConstants::DISPLAY_SCALE * zoomFactor * depth;
+        } else if (renderData.isSatellite) {
+            // Satellites: Use even smaller radius than planets
+            double radiusRatio = body.getRadius() / SolarSimConstants::PLANET_RADIUS;
+            double scaledRadius = scalePlanetRadius(radiusRatio) * 0.5;  // Half the planet size for visibility
+            radius = scaledRadius * zoomFactor * depth;
         } else {
             // Planets use scaled radius
             double radiusRatio = body.getRadius() / SolarSimConstants::PLANET_RADIUS;
@@ -319,6 +331,42 @@ void SolarSystem::advance() {
         QVector3D newPos = planet.getPosition() + newVel * SolarSimConstants::TIME_STEP * speedMultiplier;
         planet.setPosition(newPos);
     }
+    
+    // Simulate satellites orbiting around their parent planets
+    for (auto& satellite : satellites) {
+        Planet* parent = satellite.getParentPlanet();
+        if (parent) {
+            // Calculate orbital parameters
+            QVector3D r_parent = parent->getPosition() - satellite.getPosition();
+            double dist_parent = r_parent.length();
+            
+            // Target orbital distance (store in satellite or use a fixed value)
+            double targetOrbitalDist = 10.0;  // Keep moon at exactly 10 pixels from Earth
+            
+            // If distance has drifted, nudge it back to the target
+            if (dist_parent < 0.5) dist_parent = 0.5;
+            if (std::abs(dist_parent - targetOrbitalDist) > 0.5) {
+                // Maintain circular orbit: adjust position to stay at target distance
+                r_parent = r_parent.normalized() * targetOrbitalDist;
+                QVector3D targetPos = parent->getPosition() - r_parent;
+                satellite.setPosition(targetPos);
+                dist_parent = targetOrbitalDist;
+            }
+            
+            // Apply gravitational force for circular motion
+            // F = GMm/r² provides centripetal force
+            double satelliteG = SolarSimConstants::G * 100000.0;
+            double force_parent = satelliteG * parent->getMass() * satellite.getMass() / (dist_parent * dist_parent);
+            QVector3D acc = r_parent.normalized() * (force_parent / satellite.getMass());
+            
+            // Update velocity and position with physics
+            QVector3D newVel = satellite.getVelocity() + acc * SolarSimConstants::TIME_STEP * speedMultiplier;
+            satellite.setVelocity(newVel);
+            QVector3D newPos = satellite.getPosition() + newVel * SolarSimConstants::TIME_STEP * speedMultiplier;
+            satellite.setPosition(newPos);
+        }
+    }
+    
     elapsed += 16;
     update();
 }
@@ -454,7 +502,148 @@ void SolarSystem::initBodies() {
             planets.append(planet);
         }
     }
+    
+    // Initialize satellites (moons) orbiting planets
+    satellites.clear();
+    
+    // Add Earth's moon
+    Planet* earthPtr = nullptr;
+    for (auto& planet : planets) {
+        if (planet.getName() == "Earth") {
+            earthPtr = &planet;
+            break;
+        }
+    }
+    
+    if (earthPtr) {
+        // Moon orbital parameters (real solar system values)
+        double moonSMA = 0.00257;  // Semi-major axis in AU (approximately 384,400 km)
+        double moonEcc = 0.0549;   // Eccentricity
+        double moonMass = earthPtr->getMass() * (1.0 / 81.3);  // Moon mass relative to Earth
+        double moonRadius = earthPtr->getRadius() * 0.27;      // Moon radius relative to Earth
+        
+        // Calculate moon position at starting angle (make orbit visible on screen)
+        double moonAngle = qDegreesToRadians(45.0);  // Starting angle
+        double moonDist = 10.0;  // Very close orbit (10 pixels from Earth)
+        QVector3D moonPos = earthPtr->getPosition() + QVector3D(moonDist * std::cos(moonAngle), 
+                                                                 moonDist * std::sin(moonAngle), 0);
+        
+        // Calculate moon velocity for stable circular orbit around Earth using Newton's law
+        // For circular orbit: v = √(GM/r)
+        // Use same gravitational constant (100000×) as the physics engine
+        double satelliteG = SolarSimConstants::G * 100000.0;
+        double moonOrbitalVel = std::sqrt(satelliteG * earthPtr->getMass() / moonDist);
+        
+        // Tangential velocity relative to Earth
+        QVector3D moonVelRelative = QVector3D(-moonOrbitalVel * std::sin(moonAngle), 
+                                              moonOrbitalVel * std::cos(moonAngle), 0);
+        
+        // Moon's absolute velocity = Earth's velocity + Moon's velocity relative to Earth
+        QVector3D moonAbsoluteVel = earthPtr->getVelocity() + moonVelRelative;
+        
+        Satellite moon(moonPos, moonAbsoluteVel, moonMass, moonRadius, Qt::lightGray, earthPtr, "Moon");
+        moon.setOrbitalParams(moonSMA, moonEcc, 0, earthPtr->getPosition().x());
+        satellites.append(moon);
+    }
+    
+    // Add Jupiter's 4 main Galilean moons
+    Planet* jupiterPtr = nullptr;
+    for (auto& planet : planets) {
+        if (planet.getName() == "Jupiter") {
+            jupiterPtr = &planet;
+            break;
+        }
+    }
+    
+    if (jupiterPtr) {
+        struct JupiterMoonParams {
+            double orbitalDist;    // Relative orbital distance
+            double mass;           // Relative to Jupiter's mass
+            double radius;         // Relative to Jupiter's radius
+            QColor color;
+            QString name;
+        };
+        
+        std::vector<JupiterMoonParams> jupiterMoons = {
+            { 8.0, 0.0015, 0.28, QColor(200, 150, 100), "Io" },
+            { 12.0, 0.0008, 0.25, QColor(100, 150, 200), "Europa" },
+            { 16.0, 0.0025, 0.41, QColor(150, 120, 100), "Ganymede" },
+            { 22.0, 0.0018, 0.38, QColor(120, 100, 80), "Callisto" }
+        };
+        
+        for (size_t i = 0; i < jupiterMoons.size(); ++i) {
+            const auto& moonParam = jupiterMoons[i];
+            double moonAngle = qDegreesToRadians(45.0 + i * 90.0);
+            QVector3D moonPos = jupiterPtr->getPosition() + QVector3D(moonParam.orbitalDist * std::cos(moonAngle),
+                                                                       moonParam.orbitalDist * std::sin(moonAngle), 0);
+            
+            double satelliteG = SolarSimConstants::G * 100000.0;
+            double moonOrbitalVel = std::sqrt(satelliteG * jupiterPtr->getMass() * moonParam.mass / moonParam.orbitalDist);
+            
+            QVector3D moonVelRelative = QVector3D(-moonOrbitalVel * std::sin(moonAngle),
+                                                 moonOrbitalVel * std::cos(moonAngle), 0);
+            QVector3D moonAbsoluteVel = jupiterPtr->getVelocity() + moonVelRelative;
+            
+            double moonMass = jupiterPtr->getMass() * moonParam.mass;
+            double moonRadius = jupiterPtr->getRadius() * moonParam.radius;
+            
+            Satellite jupiterMoon(moonPos, moonAbsoluteVel, moonMass, moonRadius, moonParam.color, jupiterPtr, moonParam.name);
+            jupiterMoon.setOrbitalParams(moonParam.orbitalDist, 0.0, 0, jupiterPtr->getPosition().x());
+            satellites.append(jupiterMoon);
+        }
+    }
+    
+    // Add Saturn's 7 main moons
+    Planet* saturnPtr = nullptr;
+    for (auto& planet : planets) {
+        if (planet.getName() == "Saturn") {
+            saturnPtr = &planet;
+            break;
+        }
+    }
+    
+    if (saturnPtr) {
+        struct SaturnMoonParams {
+            double orbitalDist;    // Relative orbital distance
+            double mass;           // Relative to Saturn's mass
+            double radius;         // Relative to Saturn's radius
+            QColor color;
+            QString name;
+        };
+        
+        std::vector<SaturnMoonParams> saturnMoons = {
+            { 6.0, 0.0003, 0.27, QColor(200, 180, 160), "Mimas" },
+            { 7.5, 0.0007, 0.40, QColor(220, 200, 180), "Enceladus" },
+            { 9.0, 0.0017, 0.49, QColor(180, 160, 140), "Tethys" },
+            { 10.5, 0.0018, 0.48, QColor(160, 140, 120), "Dione" },
+            { 13.0, 0.0024, 0.47, QColor(140, 130, 110), "Rhea" },
+            { 20.0, 0.0225, 0.80, QColor(120, 110, 90), "Titan" },
+            { 35.0, 0.0028, 0.73, QColor(100, 80, 60), "Iapetus" }
+        };
+        
+        for (size_t i = 0; i < saturnMoons.size(); ++i) {
+            const auto& moonParam = saturnMoons[i];
+            double moonAngle = qDegreesToRadians(0.0 + i * 51.4);  // Varied angles
+            QVector3D moonPos = saturnPtr->getPosition() + QVector3D(moonParam.orbitalDist * std::cos(moonAngle),
+                                                                      moonParam.orbitalDist * std::sin(moonAngle), 0);
+            
+            double satelliteG = SolarSimConstants::G * 100000.0;
+            double moonOrbitalVel = std::sqrt(satelliteG * saturnPtr->getMass() * moonParam.mass / moonParam.orbitalDist);
+            
+            QVector3D moonVelRelative = QVector3D(-moonOrbitalVel * std::sin(moonAngle),
+                                                 moonOrbitalVel * std::cos(moonAngle), 0);
+            QVector3D moonAbsoluteVel = saturnPtr->getVelocity() + moonVelRelative;
+            
+            double moonMass = saturnPtr->getMass() * moonParam.mass;
+            double moonRadius = saturnPtr->getRadius() * moonParam.radius;
+            
+            Satellite saturnMoon(moonPos, moonAbsoluteVel, moonMass, moonRadius, moonParam.color, saturnPtr, moonParam.name);
+            saturnMoon.setOrbitalParams(moonParam.orbitalDist, 0.0, 0, saturnPtr->getPosition().x());
+            satellites.append(saturnMoon);
+        }
+    }
 }
+
 
 void SolarSystem::mouseReleaseEvent(QMouseEvent *event) {
     handleMouseRelease(event);

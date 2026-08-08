@@ -49,6 +49,10 @@ public:
     void appendPlanet(const Planet& planet) { planets.append(planet); }
     void popBackPlanet() { if (!planets.empty()) planets.removeLast(); }
     
+    void appendSatellite(const Satellite& satellite) { satellites.append(satellite); }
+    void popBackSatellite() { if (!satellites.empty()) satellites.removeLast(); }
+    const QVector<Satellite>& getSatellites() const { return satellites; }
+    
     PlanetControlWidget* controlWidget = nullptr;
 protected:
     void paintEvent(QPaintEvent *) override;
@@ -65,6 +69,7 @@ private:
     void advance();
     Sun sun;
     QVector<Planet> planets;
+    QVector<Satellite> satellites;  // Moons orbiting planets
     std::unique_ptr<QTimer> timer;
     int elapsed = 0;
     bool draggingSun = false;
