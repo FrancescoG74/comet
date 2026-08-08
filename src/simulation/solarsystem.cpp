@@ -138,26 +138,6 @@ void SolarSystem::paintEvent(QPaintEvent *) {
         p.drawLine(axes2D[0], axes2D[3]);
     }
     p.setPen(oldPen);
-    // Draw Sun (3D->2D projection with depth)
-    QVector3D spos = rot.map(sun.getPosition() - QVector3D(width()/2, height()/2, 0));
-    QPointF sun2D = QPointF(spos.x(), spos.y()) * zoomFactor + QPointF(width()/2, height()/2);
-    double sunDepth = 1.0 / std::max(0.001, 1.0 + 0.002 * spos.z());
-    double sunRadius = sun.getRadius() * SolarSimConstants::DISPLAY_SCALE * zoomFactor * sunDepth;
-    
-    // Validate before drawing
-    if (isValidPoint(sun2D) && isValidRadius(sunRadius)) {
-        // Draw sprite if loaded, otherwise draw colored circle
-        if (sun.getSprite().isLoaded()) {
-            const QPixmap& pixmap = sun.getSprite().getPixmap();
-            QPixmap scaled = pixmap.scaledToWidth(static_cast<int>(sunRadius * 2), Qt::SmoothTransformation);
-            p.drawPixmap(sun2D.x() - sunRadius, sun2D.y() - sunRadius, scaled);
-        } else {
-            QColor sunColor = sun.getColor();
-            sunColor = sunColor.lighter(100 + int(-spos.z()));
-            p.setBrush(sunColor);
-            p.drawEllipse(sun2D, sunRadius, sunRadius);
-        }
-    }
     // Draw orbital paths (faint ellipses)
     p.setPen(QPen(QColor(100, 100, 100, 100), 1, Qt::DashLine));
     for (const auto& planet : planets) {
@@ -181,97 +161,117 @@ void SolarSystem::paintEvent(QPaintEvent *) {
     }
     p.setPen(oldPen);
     
-    // Painter's Algorithm: Sort planets by depth (z-coordinate) for proper occlusion
-    struct PlanetRenderData {
-        const AstronomicalBody* planet;
-        QVector3D rotatedPos;  // Position after 3D rotation
-        double z_depth;        // Z-coordinate for sorting (farther = lower z)
+    // Painter's Algorithm: Sort sun and planets by depth (z-coordinate) for proper occlusion
+    struct CelestialRenderData {
+        const AstronomicalBody* body;
+        bool isSun;                 // Track if this is the sun or a planet
+        QVector3D rotatedPos;       // Position after 3D rotation
+        double z_depth;             // Z-coordinate for sorting (farther = lower z)
     };
     
-    std::vector<PlanetRenderData> renderQueue;
+    std::vector<CelestialRenderData> renderQueue;
     
-    // Calculate depth for each planet
+    // Add sun to render queue
+    QVector3D sunRotated = rot.map(sun.getPosition() - QVector3D(width()/2, height()/2, 0));
+    renderQueue.push_back({&sun, true, sunRotated, sunRotated.z()});
+    
+    // Add all planets to render queue
     for (const auto& planet : planets) {
         QVector3D ppos = rot.map(planet.getPosition() - QVector3D(width()/2, height()/2, 0));
-        renderQueue.push_back({&planet, ppos, ppos.z()});
+        renderQueue.push_back({&planet, false, ppos, ppos.z()});
     }
     
     // Sort by depth: farther objects (lower z) first, closer objects (higher z) last
     std::sort(renderQueue.begin(), renderQueue.end(),
-              [](const PlanetRenderData& a, const PlanetRenderData& b) {
+              [](const CelestialRenderData& a, const CelestialRenderData& b) {
                   return a.z_depth < b.z_depth;  // Ascending order: farthest first
               });
     
-    // Draw Planets in sorted order (Painter's Algorithm)
+    // Draw all celestial bodies in sorted order (Painter's Algorithm)
     for (const auto& renderData : renderQueue) {
-        const AstronomicalBody& planet = *renderData.planet;
-        QVector3D ppos = renderData.rotatedPos;
-        QPointF planet2D = QPointF(ppos.x(), ppos.y()) * zoomFactor + QPointF(width()/2, height()/2);
-        double depth = 1.0 / std::max(0.001, 1.0 + 0.002 * ppos.z());
+        const AstronomicalBody& body = *renderData.body;
+        QVector3D pos = renderData.rotatedPos;
+        QPointF body2D = QPointF(pos.x(), pos.y()) * zoomFactor + QPointF(width()/2, height()/2);
+        double depth = 1.0 / std::max(0.001, 1.0 + 0.002 * pos.z());
         
-        // Use scaled radius for better visibility (non-linear scaling)
-        // Get the actual radius ratio (relative to PLANET_RADIUS)
-        double radiusRatio = planet.getRadius() / SolarSimConstants::PLANET_RADIUS;
-        double scaledRadius = scalePlanetRadius(radiusRatio);
-        double pradius = scaledRadius * zoomFactor * depth;
-        
-        // Skip if point or radius is invalid
-        if (!isValidPoint(planet2D) || !isValidRadius(pradius)) continue;
-
-        // Draw sprite if loaded, otherwise draw colored circle
-        if (planet.getSprite().isLoaded()) {
-            const QPixmap& pixmap = planet.getSprite().getPixmap();
-            QPixmap scaled = pixmap.scaledToWidth(static_cast<int>(pradius * 2), Qt::SmoothTransformation);
-            p.drawPixmap(planet2D.x() - pradius, planet2D.y() - pradius, scaled);
+        double radius;
+        if (renderData.isSun) {
+            // Sun uses its astronomical radius directly
+            radius = body.getRadius() * SolarSimConstants::DISPLAY_SCALE * zoomFactor * depth;
         } else {
-            // Direction from planet to sun in 2D (screen space)
-            QPointF sun2D = QPointF(sun.getPosition().x(), sun.getPosition().y());
-            QPointF planet2Dpos = QPointF(planet.getPosition().x(), planet.getPosition().y());
-            QPointF dir = sun2D - planet2Dpos;
-            double len = std::sqrt(dir.x()*dir.x() + dir.y()*dir.y());
-            QPointF gradCenter = planet2D;
-            if (len > 1e-3) {
-                QPointF offset = dir / len * pradius * 0.5;
-                gradCenter = planet2D + offset;
-            }
-            // Validate gradient center before use
-            if (!isValidPoint(gradCenter)) gradCenter = planet2D;
-            
-            double gradRadius = std::max(1.0, pradius);
-            QRadialGradient grad(gradCenter, gradRadius, gradCenter);
-            grad.setColorAt(0.0, planet.getColor());
-            grad.setColorAt(1.0, Qt::black);
-            p.setBrush(grad);
-            p.drawEllipse(planet2D, pradius, pradius);
+            // Planets use scaled radius
+            double radiusRatio = body.getRadius() / SolarSimConstants::PLANET_RADIUS;
+            double scaledRadius = scalePlanetRadius(radiusRatio);
+            radius = scaledRadius * zoomFactor * depth;
         }
         
-        // Draw planet name label
-        QString planetName = planet.getName();
-        if (!planetName.isEmpty()) {
-            QFont font = p.font();
-            font.setPointSize(8);
-            font.setBold(true);
-            p.setFont(font);
-            
-            // Position text below the planet
-            QPointF textPos = planet2D + QPointF(0, pradius + 12);
-            
-            // Validate text position
-            if (isValidPoint(textPos)) {
-                // Draw semi-transparent background for readability
-                QFontMetrics fm(font);
-                int textWidth = fm.horizontalAdvance(planetName);
-                int textHeight = fm.height();
-                QRectF textBg(textPos.x() - textWidth/2 - 2, textPos.y() - textHeight/2, 
-                             textWidth + 4, textHeight);
+        // Skip if point or radius is invalid
+        if (!isValidPoint(body2D) || !isValidRadius(radius)) continue;
+
+        // Draw sprite if loaded, otherwise draw colored circle
+        if (body.getSprite().isLoaded()) {
+            const QPixmap& pixmap = body.getSprite().getPixmap();
+            QPixmap scaled = pixmap.scaledToWidth(static_cast<int>(radius * 2), Qt::SmoothTransformation);
+            p.drawPixmap(body2D.x() - radius, body2D.y() - radius, scaled);
+        } else {
+            if (renderData.isSun) {
+                // Draw sun with brightness based on depth
+                QColor sunColor = body.getColor();
+                sunColor = sunColor.lighter(100 + int(-pos.z()));
+                p.setBrush(sunColor);
+                p.drawEllipse(body2D, radius, radius);
+            } else {
+                // Draw planet with radial gradient
+                QPointF sun2DPos = QPointF(sun.getPosition().x(), sun.getPosition().y());
+                QPointF bodyPos = QPointF(body.getPosition().x(), body.getPosition().y());
+                QPointF dir = sun2DPos - bodyPos;
+                double len = std::sqrt(dir.x()*dir.x() + dir.y()*dir.y());
+                QPointF gradCenter = body2D;
+                if (len > 1e-3) {
+                    QPointF offset = dir / len * radius * 0.5;
+                    gradCenter = body2D + offset;
+                }
+                // Validate gradient center before use
+                if (!isValidPoint(gradCenter)) gradCenter = body2D;
                 
-                // Draw background
-                QColor bgColor(0, 0, 0, 180);  // Semi-transparent black
-                p.fillRect(textBg, bgColor);
+                double gradRadius = std::max(1.0, radius);
+                QRadialGradient grad(gradCenter, gradRadius, gradCenter);
+                grad.setColorAt(0.0, body.getColor());
+                grad.setColorAt(1.0, Qt::black);
+                p.setBrush(grad);
+                p.drawEllipse(body2D, radius, radius);
+            }
+        }
+        
+        // Draw body name label (only for planets, not sun)
+        if (!renderData.isSun) {
+            QString bodyName = body.getName();
+            if (!bodyName.isEmpty()) {
+                QFont font = p.font();
+                font.setPointSize(8);
+                font.setBold(true);
+                p.setFont(font);
                 
-                // Draw text
-                p.setPen(Qt::white);
-                p.drawText(textPos.x() - textWidth/2, textPos.y() + textHeight/3, planetName);
+                // Position text below the body
+                QPointF textPos = body2D + QPointF(0, radius + 12);
+                
+                // Validate text position
+                if (isValidPoint(textPos)) {
+                    // Draw semi-transparent background for readability
+                    QFontMetrics fm(font);
+                    int textWidth = fm.horizontalAdvance(bodyName);
+                    int textHeight = fm.height();
+                    QRectF textBg(textPos.x() - textWidth/2 - 2, textPos.y() - textHeight/2, 
+                                 textWidth + 4, textHeight);
+                    
+                    // Draw background
+                    QColor bgColor(0, 0, 0, 180);  // Semi-transparent black
+                    p.fillRect(textBg, bgColor);
+                    
+                    // Draw text
+                    p.setPen(Qt::white);
+                    p.drawText(textPos.x() - textWidth/2, textPos.y() + textHeight/3, bodyName);
+                }
             }
         }
     }
