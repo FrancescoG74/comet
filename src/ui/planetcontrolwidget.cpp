@@ -8,6 +8,7 @@
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QColor>
+#include <QApplication>
 #include <cstdlib>
 #include <ctime>
 
@@ -21,6 +22,7 @@ PlanetControlWidget::PlanetControlWidget(SolarSystem* solarSystem, QWidget* pare
     addButton = std::make_unique<QPushButton>("Add Planet", this);
     removeButton = std::make_unique<QPushButton>("Remove Planet", this);
     startStopButton = std::make_unique<QPushButton>("Start", this);
+    quitButton = std::make_unique<QPushButton>("Quit", this);
     speedSlider = std::make_unique<QSlider>(Qt::Horizontal, this);
     speedLabel = std::make_unique<QLabel>("Speed: 1.0x", this);
     
@@ -45,12 +47,14 @@ PlanetControlWidget::PlanetControlWidget(SolarSystem* solarSystem, QWidget* pare
     auto* mainLayout = new QVBoxLayout(this);
     mainLayout->addLayout(horizontalLayout);
     mainLayout->addWidget(startStopButton.get());
+    mainLayout->addWidget(quitButton.get());
     mainLayout->addLayout(speedLayout);
     setLayout(mainLayout);
 
     connect(addButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onAddPlanetClicked);
     connect(removeButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onRemovePlanetClicked);
     connect(startStopButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onStartStopClicked);
+    connect(quitButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onQuitClicked);
     connect(speedSlider.get(), QOverload<int>::of(&QSlider::valueChanged), this, &PlanetControlWidget::onSimulationSpeedChanged);
 }
 
@@ -100,4 +104,9 @@ void PlanetControlWidget::onSimulationSpeedChanged(int value)
     }
     // Update label
     speedLabel->setText(QString("Speed: %1x").arg(speedMultiplier, 0, 'f', 1));
+}
+
+void PlanetControlWidget::onQuitClicked()
+{
+    QApplication::quit();
 }

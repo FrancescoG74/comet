@@ -15,11 +15,13 @@ private slots:
     void onAddPlanetClicked();
     void onRemovePlanetClicked();
     void onStartStopClicked();
+    void onQuitClicked();
     void onSimulationSpeedChanged(int value);
 private:
     std::unique_ptr<QPushButton> addButton;
     std::unique_ptr<QPushButton> removeButton;
     std::unique_ptr<QPushButton> startStopButton;
+    std::unique_ptr<QPushButton> quitButton;
     std::unique_ptr<QSlider> speedSlider;
     std::unique_ptr<QLabel> speedLabel;
     SolarSystem* system;  // non-owning pointer
