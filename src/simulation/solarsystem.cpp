@@ -77,11 +77,10 @@ static inline bool isValidRadius(double r) {
 // Apply non-linear scaling to planet sizes for better visibility
 // Maps realistic size ratios to visible screen sizes
 static double scalePlanetRadius(double realRadius) {
-    // Use a power function: scaled = pow(realRadius, 0.6)
-    // This makes small planets more visible while keeping giants reasonable
-    // Example: Mercury (0.383) -> ~0.62, Jupiter (10.97) -> ~4.2 in relative scale
+    // Scale real astronomical radius to screen pixels using global display scale
+    // Uses real radius ratios: Mercury (0.383), Venus (0.949), Earth (1.0), Jupiter (10.97), etc.
     if (realRadius <= 0) return 0;
-    return std::pow(realRadius, 0.65) * SolarSimConstants::PLANET_RADIUS;
+    return realRadius * SolarSimConstants::DISPLAY_SCALE;
 }
 
 void SolarSystem::paintEvent(QPaintEvent *) {
@@ -143,7 +142,7 @@ void SolarSystem::paintEvent(QPaintEvent *) {
     QVector3D spos = rot.map(sun.getPosition() - QVector3D(width()/2, height()/2, 0));
     QPointF sun2D = QPointF(spos.x(), spos.y()) * zoomFactor + QPointF(width()/2, height()/2);
     double sunDepth = 1.0 / std::max(0.001, 1.0 + 0.002 * spos.z());
-    double sunRadius = sun.getRadius() * zoomFactor * sunDepth;
+    double sunRadius = sun.getRadius() * SolarSimConstants::DISPLAY_SCALE * zoomFactor * sunDepth;
     
     // Validate before drawing
     if (isValidPoint(sun2D) && isValidRadius(sunRadius)) {
