@@ -166,7 +166,7 @@ void SolarSystem::paintEvent(QPaintEvent *) {
         const AstronomicalBody* body;
         bool isSun;                 // Track if this is the sun or a planet
         QVector3D rotatedPos;       // Position after 3D rotation
-        double z_depth;             // Z-coordinate for sorting (farther = lower z)
+        double z_depth;             // Z-coordinate for sorting (higher = farther)
     };
     
     std::vector<CelestialRenderData> renderQueue;
@@ -181,10 +181,10 @@ void SolarSystem::paintEvent(QPaintEvent *) {
         renderQueue.push_back({&planet, false, ppos, ppos.z()});
     }
     
-    // Sort by depth: farther objects (lower z) first, closer objects (higher z) last
+    // Sort by depth: farther objects (higher z) first, closer objects (lower z) last
     std::sort(renderQueue.begin(), renderQueue.end(),
               [](const CelestialRenderData& a, const CelestialRenderData& b) {
-                  return a.z_depth < b.z_depth;  // Ascending order: farthest first
+                  return a.z_depth > b.z_depth;  // Descending order: farthest first
               });
     
     // Draw all celestial bodies in sorted order (Painter's Algorithm)

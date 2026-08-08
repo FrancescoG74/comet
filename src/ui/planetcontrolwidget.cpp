@@ -24,12 +24,12 @@ PlanetControlWidget::PlanetControlWidget(SolarSystem* solarSystem, QWidget* pare
     speedSlider = std::make_unique<QSlider>(Qt::Horizontal, this);
     speedLabel = std::make_unique<QLabel>("Speed: 1.0x", this);
     
-    // Configure speed slider (range: 10 to 500, representing 0.1x to 5.0x speed)
+    // Configure speed slider (range: 10 to 2000, representing 0.1x to 20x speed)
     speedSlider->setMinimum(10);
-    speedSlider->setMaximum(500);
-    speedSlider->setValue(10);  // Default: 0.1x (10x slower)
+    speedSlider->setMaximum(2000);
+    speedSlider->setValue(100);  // Default: 1.0x speed
     speedSlider->setTickPosition(QSlider::TicksBelow);
-    speedSlider->setTickInterval(50);
+    speedSlider->setTickInterval(200);
     
     // Create horizontal layout for Add/Remove buttons
     auto* horizontalLayout = new QHBoxLayout();
@@ -93,7 +93,7 @@ void PlanetControlWidget::updateButtonState(bool isRunning)
 
 void PlanetControlWidget::onSimulationSpeedChanged(int value)
 {
-    // Convert slider value (10-500) to speed multiplier (0.1x - 5.0x)
+    // Convert slider value (10-2000) to speed multiplier (0.1x - 20x)
     double speedMultiplier = value / 100.0;
     if (system) {
         system->setSimulationSpeedMultiplier(speedMultiplier);
