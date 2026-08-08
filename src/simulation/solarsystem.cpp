@@ -74,6 +74,26 @@ static inline bool isValidRadius(double r) {
     return std::isfinite(r) && r > 0;
 }
 
+// Convert black pixels to transparent in a pixmap
+// This creates a circular appearance for square images with black backgrounds
+static QPixmap makeBlackTransparent(const QPixmap& source) {
+    QImage image = source.toImage().convertToFormat(QImage::Format_ARGB32);
+    
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            QColor color(image.pixel(x, y));
+            // If pixel is very dark (near black), make it transparent
+            // Using luminance threshold for better results
+            int luminance = (color.red() * 299 + color.green() * 587 + color.blue() * 114) / 1000;
+            if (luminance < 30) {  // Threshold for near-black pixels
+                image.setPixelColor(x, y, QColor(0, 0, 0, 0));  // Transparent
+            }
+        }
+    }
+    
+    return QPixmap::fromImage(image);
+}
+
 // Apply non-linear scaling to planet sizes for better visibility
 // Maps realistic size ratios to visible screen sizes
 static double scalePlanetRadius(double realRadius) {
@@ -210,7 +230,13 @@ void SolarSystem::paintEvent(QPaintEvent *) {
 
         // Draw sprite if loaded, otherwise draw colored circle
         if (body.getSprite().isLoaded()) {
-            const QPixmap& pixmap = body.getSprite().getPixmap();
+            QPixmap pixmap = body.getSprite().getPixmap();
+            
+            // For sun: apply transparency to black pixels to create circular appearance
+            if (renderData.isSun) {
+                pixmap = makeBlackTransparent(pixmap);
+            }
+            
             QPixmap scaled = pixmap.scaledToWidth(static_cast<int>(radius * 2), Qt::SmoothTransformation);
             p.drawPixmap(body2D.x() - radius, body2D.y() - radius, scaled);
         } else {

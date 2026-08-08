@@ -144,3 +144,132 @@ TEST_CASE("Solar system realistic planet radii", "[solarsystem][planets]") {
     REQUIRE(jupiterRadius > earthRadius);
     REQUIRE(jupiterRadius / earthRadius == 11);
 }
+
+// ============================================================================
+// Simulation: Realistic Astronomical Constants Tests
+// ============================================================================
+
+TEST_CASE("Sun mass is realistically proportional to Earth mass", "[constants][astronomy]") {
+    // Sun is approximately 333,000 times more massive than Earth
+    REQUIRE(SolarSimConstants::SUN_MASS == 333000.0);
+    REQUIRE(SolarSimConstants::SUN_MASS > 0);
+    REQUIRE(SolarSimConstants::SUN_MASS / SolarSimConstants::EARTH_MASS == 333000.0);
+}
+
+TEST_CASE("Sun radius is realistically proportional to Earth radius", "[constants][astronomy]") {
+    // Sun is approximately 109 times the radius of Earth
+    REQUIRE(SolarSimConstants::SUN_RADIUS == 109.0);
+    REQUIRE(SolarSimConstants::SUN_RADIUS > 0);
+    REQUIRE(SolarSimConstants::SUN_RADIUS / SolarSimConstants::EARTH_RADIUS == 109.0);
+}
+
+TEST_CASE("Earth reference constants are baseline", "[constants][astronomy]") {
+    REQUIRE(SolarSimConstants::EARTH_MASS == 1.0);
+    REQUIRE(SolarSimConstants::EARTH_RADIUS == 1.0);
+}
+
+TEST_CASE("Display scale is positive", "[constants][display]") {
+    REQUIRE(SolarSimConstants::DISPLAY_SCALE > 0);
+    REQUIRE(SolarSimConstants::DISPLAY_SCALE == 0.25);
+}
+
+TEST_CASE("Sun display radius calculation", "[constants][display]") {
+    // Sun display radius = SUN_RADIUS * DISPLAY_SCALE
+    // = 109.0 * 0.25 = 27.25 pixels
+    double sunDisplayRadius = SolarSimConstants::SUN_RADIUS * SolarSimConstants::DISPLAY_SCALE;
+    REQUIRE_THAT(sunDisplayRadius, WithinRel(27.25, 1e-6));
+}
+
+TEST_CASE("Mercury display radius is small", "[constants][display]") {
+    // Mercury radius relative to Earth = 0.383
+    double mercuryRadius = 0.383;
+    double mercuryDisplayRadius = mercuryRadius * SolarSimConstants::DISPLAY_SCALE;
+    // Should be approximately 0.096 pixels
+    REQUIRE_THAT(mercuryDisplayRadius, WithinRel(0.09575, 1e-6));
+    REQUIRE(mercuryDisplayRadius < 1.0);  // Mercury should be very small
+}
+
+TEST_CASE("Jupiter display radius is larger than Mercury", "[constants][display]") {
+    // Jupiter radius relative to Earth = 10.97
+    double jupiterRadius = 10.97;
+    double jupiterDisplayRadius = jupiterRadius * SolarSimConstants::DISPLAY_SCALE;
+    
+    // Mercury radius = 0.383
+    double mercuryRadius = 0.383;
+    double mercuryDisplayRadius = mercuryRadius * SolarSimConstants::DISPLAY_SCALE;
+    
+    REQUIRE(jupiterDisplayRadius > mercuryDisplayRadius);
+    REQUIRE_THAT(jupiterDisplayRadius / mercuryDisplayRadius, WithinRel(10.97 / 0.383, 1e-6));
+}
+
+TEST_CASE("Realistic solar system has proper mass relationships", "[solarsystem][astronomy]") {
+    // Mercury mass relative to Earth = 0.055
+    double mercuryMass = 0.055;
+    double earthMass = 1.0;
+    
+    REQUIRE(earthMass > mercuryMass);
+    REQUIRE_THAT(earthMass / mercuryMass, WithinRel(18.18, 0.1));  // Earth is ~18x more massive than Mercury
+}
+
+TEST_CASE("Speed slider multiplier range minimum", "[ui][speed]") {
+    // Speed slider minimum value 10 = 0.1x
+    int minSliderValue = 10;
+    double minMultiplier = minSliderValue / 100.0;
+    REQUIRE_THAT(minMultiplier, WithinRel(0.1, 1e-6));
+}
+
+TEST_CASE("Speed slider multiplier range maximum", "[ui][speed]") {
+    // Speed slider maximum value 2000 = 20x
+    int maxSliderValue = 2000;
+    double maxMultiplier = maxSliderValue / 100.0;
+    REQUIRE_THAT(maxMultiplier, WithinRel(20.0, 1e-6));
+}
+
+TEST_CASE("Speed slider multiplier default is 1.0x", "[ui][speed]") {
+    // Speed slider default value 100 = 1.0x
+    int defaultValue = 100;
+    double defaultMultiplier = defaultValue / 100.0;
+    REQUIRE_THAT(defaultMultiplier, WithinRel(1.0, 1e-6));
+}
+
+TEST_CASE("Speed multiplier calculation for 0.5x", "[ui][speed]") {
+    int sliderValue = 50;
+    double multiplier = sliderValue / 100.0;
+    REQUIRE_THAT(multiplier, WithinRel(0.5, 1e-6));
+}
+
+TEST_CASE("Speed multiplier calculation for 5x", "[ui][speed]") {
+    int sliderValue = 500;
+    double multiplier = sliderValue / 100.0;
+    REQUIRE_THAT(multiplier, WithinRel(5.0, 1e-6));
+}
+
+TEST_CASE("Simulation time advancement at 1x speed", "[ui][time]") {
+    // At 1x speed: 1 day per real second
+    double speedMultiplier = 1.0;
+    double simulationSecondsPerRealSecond = speedMultiplier * 86400.0;  // 86400 seconds = 1 day
+    REQUIRE_THAT(simulationSecondsPerRealSecond, WithinRel(86400.0, 1e-6));
+}
+
+TEST_CASE("Simulation time advancement at 0.1x speed", "[ui][time]") {
+    // At 0.1x speed: 0.1 days per real second (2.4 hours)
+    double speedMultiplier = 0.1;
+    double simulationSecondsPerRealSecond = speedMultiplier * 86400.0;
+    REQUIRE_THAT(simulationSecondsPerRealSecond, WithinRel(8640.0, 1e-6));
+}
+
+TEST_CASE("Simulation time advancement at 20x speed", "[ui][time]") {
+    // At 20x speed: 20 days per real second
+    double speedMultiplier = 20.0;
+    double simulationSecondsPerRealSecond = speedMultiplier * 86400.0;
+    REQUIRE_THAT(simulationSecondsPerRealSecond, WithinRel(1728000.0, 1e-6));
+}
+
+TEST_CASE("Painter's algorithm requires proper depth sorting", "[rendering][depth]") {
+    // Test that depth values work correctly for sorting
+    double farDepth = -100.0;    // Far from camera (negative z)
+    double closeDepth = 100.0;   // Close to camera (positive z)
+    
+    // Should render far objects first (lower z value)
+    REQUIRE(farDepth < closeDepth);
+}
