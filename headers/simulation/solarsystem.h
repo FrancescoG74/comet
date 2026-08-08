@@ -26,12 +26,15 @@ public:
     void setSunMass(double mass) { sun.setMass(mass); }
     void setSimulationActive(bool active) { simulationActive = active; }
     void setSimulationSpeedMultiplier(double multiplier) { speedMultiplier = std::max(0.1, multiplier); }
+    void setCameraOffset(const QVector2D& offset) { cameraOffset = offset; }
     void resetView() {
         zoomFactor = 0.7;
         viewPitch = -35.0;
         viewYaw = 15.0;
+        cameraOffset = QVector2D(0, 0);
     }
     double getZoomFactor() const { return zoomFactor; }
+    QVector2D getCameraOffset() const { return cameraOffset; }
     QVector3D getSunPosition() const { return sun.getPosition(); }
     double getSunRadius() const { return sun.getRadius(); }
     QPoint getLastMousePos() const { return lastMousePos; }
@@ -74,5 +77,6 @@ private:
     double viewPitch = 0.0; // rotation around X (vertical)
     bool rotatingView = false;
     QPoint lastMousePos;
+    QVector2D cameraOffset = QVector2D(0, 0);  // Camera pan offset in screen space
     std::unique_ptr<SolarSystemController> controller;
 };

@@ -137,7 +137,7 @@ void SolarSystem::paintEvent(QPaintEvent *) {
     QPointF axes2D[4];
     for (int i = 0; i < 4; ++i) {
         QVector3D p3 = rot.map(axes3D[i] - QVector3D(width()/2, height()/2, 0));
-        axes2D[i] = QPointF(p3.x(), p3.y()) * zoomFactor + QPointF(width()/2, height()/2);
+        axes2D[i] = QPointF(p3.x(), p3.y()) * zoomFactor + QPointF(width()/2, height()/2) - QPointF(cameraOffset.x(), cameraOffset.y());
     }
     QPen oldPen = p.pen();
     QPen xPen(Qt::red, 2);
@@ -169,7 +169,7 @@ void SolarSystem::paintEvent(QPaintEvent *) {
         if (a > 0 && b > 0) {
             // Orbital ellipse center (sun at left focus)
             double ellipseCenterX = planet.getSunX() + c;
-            QPointF ellipseCenter = QPointF(ellipseCenterX, center.y());
+            QPointF ellipseCenter = QPointF(ellipseCenterX, center.y()) - QPointF(cameraOffset.x(), cameraOffset.y());
             
             // Draw ellipse (note: QRect takes top-left corner)
             QRectF ellipseRect(ellipseCenter.x() - a * zoomFactor, 
@@ -211,7 +211,7 @@ void SolarSystem::paintEvent(QPaintEvent *) {
     for (const auto& renderData : renderQueue) {
         const AstronomicalBody& body = *renderData.body;
         QVector3D pos = renderData.rotatedPos;
-        QPointF body2D = QPointF(pos.x(), pos.y()) * zoomFactor + QPointF(width()/2, height()/2);
+        QPointF body2D = QPointF(pos.x(), pos.y()) * zoomFactor + QPointF(width()/2, height()/2) - QPointF(cameraOffset.x(), cameraOffset.y());
         double depth = 1.0 / std::max(0.001, 1.0 + 0.002 * pos.z());
         
         double radius;
