@@ -42,7 +42,8 @@ void SolarSystem::handleMouseMove(QMouseEvent *event) {
 }
 
 SolarSystem::SolarSystem(QWidget *parent) : QWidget(parent) {
-    setFixedSize(SolarSimConstants::WINDOW_WIDTH, SolarSimConstants::WINDOW_HEIGHT);
+    setMinimumSize(SolarSimConstants::WINDOW_WIDTH / 2, SolarSimConstants::WINDOW_HEIGHT / 2);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     timer = std::make_unique<QTimer>(this);
     connect(timer.get(), &QTimer::timeout, this, [this]() {
         if (simulationActive) {
