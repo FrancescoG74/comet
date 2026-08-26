@@ -9,7 +9,7 @@ class QMouseEvent;
 class QWheelEvent;
 
 class SolarSystemController : public QObject {
-//    Q_OBJECT
+    Q_OBJECT
 public:
     SolarSystemController(SolarSystem* system);
     void handleKeyPress(QKeyEvent* event);
@@ -19,7 +19,7 @@ public:
     void handleWheel(QWheelEvent* event);
 
     // Controller methods for adding/removing planets
-    void addPlanet(const AstronomicalBody& planet);
+    void addPlanet(const Planet& planet);
     void removePlanet(int index);
 private:
     SolarSystem* system;

@@ -1,0 +1,411 @@
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <QVector3D>
+#include <QColor>
+#include <cmath>
+#include "astronomicalbody.h"
+
+using Catch::Matchers::WithinRel;
+
+// ============================================================================
+// CORE TESTS - AstronomicalBody Hierarchy
+// ============================================================================
+
+// ============================================================================
+// Core: Planet Constructor Tests (1-5)
+// ============================================================================
+
+TEST_CASE("Planet default constructor", "[planet][constructor]") {
+    Planet planet;
+    REQUIRE(planet.getPosition() == QVector3D(0, 0, 0));
+    REQUIRE(planet.getVelocity() == QVector3D(0, 0, 0));
+    REQUIRE(planet.getMass() == 0.0);
+    REQUIRE(planet.getRadius() == 0.0);
+}
+
+TEST_CASE("Planet full constructor", "[planet][constructor]") {
+    QVector3D pos(100, 200, 300);
+    QVector3D vel(1, 2, 3);
+    double mass = 5000.0;
+    double radius = 50.0;
+    QColor color = Qt::blue;
+    
+    Planet planet(pos, vel, mass, radius, color);
+    
+    REQUIRE(planet.getPosition() == pos);
+    REQUIRE(planet.getVelocity() == vel);
+    REQUIRE(planet.getMass() == mass);
+    REQUIRE(planet.getRadius() == radius);
+    REQUIRE(planet.getColor() == color);
+}
+
+TEST_CASE("Planet with negative coordinates", "[planet][constructor]") {
+    QVector3D pos(-100, -200, -300);
+    QVector3D vel(-1, -2, -3);
+    
+    Planet planet(pos, vel, 1000.0, 25.0, Qt::red);
+    
+    REQUIRE(planet.getPosition() == pos);
+    REQUIRE(planet.getVelocity() == vel);
+}
+
+TEST_CASE("Planet with zero values", "[planet][constructor]") {
+    Planet planet(QVector3D(0, 0, 0), QVector3D(0, 0, 0), 0.0, 0.0, Qt::white);
+    
+    REQUIRE(planet.getPosition().length() == 0.0);
+    REQUIRE(planet.getVelocity().length() == 0.0);
+    REQUIRE(planet.getMass() == 0.0);
+    REQUIRE(planet.getRadius() == 0.0);
+}
+
+TEST_CASE("Planet with very large values", "[planet][constructor]") {
+    double largeValue = 1e10;
+    Planet planet(
+        QVector3D(largeValue, largeValue, largeValue),
+        QVector3D(largeValue, largeValue, largeValue),
+        largeValue,
+        largeValue,
+        Qt::yellow
+    );
+    
+    REQUIRE(planet.getPosition().x() == largeValue);
+    REQUIRE(planet.getMass() == largeValue);
+}
+
+// ============================================================================
+// Core: Sun Constructor Tests (6-10)
+// ============================================================================
+
+TEST_CASE("Sun default constructor", "[sun][constructor]") {
+    Sun sun;
+    REQUIRE(sun.getPosition() == QVector3D(0, 0, 0));
+    REQUIRE(sun.getMass() == 0.0);
+    REQUIRE(sun.getRadius() == 0.0);
+    REQUIRE(sun.getColor() == Qt::yellow);
+}
+
+TEST_CASE("Sun full constructor", "[sun][constructor]") {
+    QVector3D pos(500, 500, 0);
+    double mass = 1000000.0;
+    double radius = 40.0;
+    QColor color = Qt::yellow;
+    
+    Sun sun(pos, mass, radius, color);
+    
+    REQUIRE(sun.getPosition() == pos);
+    REQUIRE(sun.getMass() == mass);
+    REQUIRE(sun.getRadius() == radius);
+    REQUIRE(sun.getColor() == color);
+}
+
+TEST_CASE("Sun has no velocity method", "[sun][constructor]") {
+    Sun sun(QVector3D(100, 100, 0), 1e6, 50, Qt::yellow);
+    
+    // Sun should not have getVelocity() - compile-time check
+    REQUIRE(sun.getMass() == 1e6);
+    REQUIRE(sun.getRadius() == 50);
+}
+
+TEST_CASE("Sun is static - position can be set", "[sun][constructor]") {
+    Sun sun(QVector3D(100, 100, 0), 1e6, 50, Qt::yellow);
+    
+    QVector3D newPos(200, 200, 0);
+    sun.setPosition(newPos);
+    
+    REQUIRE(sun.getPosition() == newPos);
+}
+
+TEST_CASE("Sun mass can be modified", "[sun][constructor]") {
+    Sun sun(QVector3D(100, 100, 0), 1e6, 50, Qt::yellow);
+    
+    double newMass = 2e6;
+    sun.setMass(newMass);
+    
+    REQUIRE(sun.getMass() == newMass);
+}
+
+// ============================================================================
+// Core: Planet Position Tests (11-20)
+// ============================================================================
+
+TEST_CASE("Planet getPosition returns correct position", "[planet][position]") {
+    QVector3D testPos(10, 20, 30);
+    Planet planet(testPos, QVector3D(), 100, 10, Qt::white);
+    
+    REQUIRE(planet.getPosition() == testPos);
+}
+
+TEST_CASE("Planet position x component", "[planet][position]") {
+    QVector3D pos(123.456, 0, 0);
+    Planet planet(pos, QVector3D(), 100, 10, Qt::white);
+    
+    REQUIRE_THAT(planet.getPosition().x(), WithinRel(123.456, 1e-5));
+}
+
+TEST_CASE("Planet position y component", "[planet][position]") {
+    QVector3D pos(0, 789.012, 0);
+    Planet planet(pos, QVector3D(), 100, 10, Qt::white);
+    
+    REQUIRE_THAT(planet.getPosition().y(), WithinRel(789.012, 1e-5));
+}
+
+TEST_CASE("Planet position z component", "[planet][position]") {
+    QVector3D pos(0, 0, 345.678);
+    Planet planet(pos, QVector3D(), 100, 10, Qt::white);
+    
+    REQUIRE_THAT(planet.getPosition().z(), WithinRel(345.678, 1e-5));
+}
+
+TEST_CASE("Planet position magnitude calculation", "[planet][position]") {
+    QVector3D pos(3, 4, 0);  // magnitude should be 5
+    Planet planet(pos, QVector3D(), 100, 10, Qt::white);
+    
+    REQUIRE_THAT(planet.getPosition().length(), WithinRel(5.0, 1e-5));
+}
+
+TEST_CASE("Planet position is independent for different bodies", "[planet][position]") {
+    Planet planet1(QVector3D(1, 2, 3), QVector3D(), 100, 10, Qt::white);
+    Planet planet2(QVector3D(4, 5, 6), QVector3D(), 100, 10, Qt::white);
+    
+    REQUIRE(planet1.getPosition() != planet2.getPosition());
+}
+
+TEST_CASE("Planet position with fractional coordinates", "[planet][position]") {
+    QVector3D pos(1.5, 2.7, 3.9);
+    Planet planet(pos, QVector3D(), 100, 10, Qt::white);
+    
+    REQUIRE_THAT(planet.getPosition().x(), WithinRel(1.5, 1e-5));
+    REQUIRE_THAT(planet.getPosition().y(), WithinRel(2.7, 1e-5));
+    REQUIRE_THAT(planet.getPosition().z(), WithinRel(3.9, 1e-5));
+}
+
+TEST_CASE("Sun position returns correct position", "[sun][position]") {
+    QVector3D testPos(500, 500, 0);
+    Sun sun(testPos, 1e6, 50, Qt::yellow);
+    
+    REQUIRE(sun.getPosition() == testPos);
+}
+
+// ============================================================================
+// Core: Planet Velocity Tests (21-30)
+// ============================================================================
+
+TEST_CASE("Planet getVelocity returns correct velocity", "[planet][velocity]") {
+    QVector3D testVel(5, 10, 15);
+    Planet planet(QVector3D(), testVel, 100, 10, Qt::white);
+    
+    REQUIRE(planet.getVelocity() == testVel);
+}
+
+TEST_CASE("Planet velocity x component", "[planet][velocity]") {
+    QVector3D vel(11.111, 0, 0);
+    Planet planet(QVector3D(), vel, 100, 10, Qt::white);
+    
+    REQUIRE_THAT(planet.getVelocity().x(), WithinRel(11.111, 1e-4));
+}
+
+TEST_CASE("Planet velocity y component", "[planet][velocity]") {
+    QVector3D vel(0, 22.222, 0);
+    Planet planet(QVector3D(), vel, 100, 10, Qt::white);
+    
+    REQUIRE_THAT(planet.getVelocity().y(), WithinRel(22.222, 1e-4));
+}
+
+TEST_CASE("Planet velocity z component", "[planet][velocity]") {
+    QVector3D vel(0, 0, 33.333);
+    Planet planet(QVector3D(), vel, 100, 10, Qt::white);
+    
+    REQUIRE_THAT(planet.getVelocity().z(), WithinRel(33.333, 1e-4));
+}
+
+TEST_CASE("Planet velocity magnitude", "[planet][velocity]") {
+    QVector3D vel(3, 4, 0);  // magnitude should be 5
+    Planet planet(QVector3D(), vel, 100, 10, Qt::white);
+    
+    REQUIRE_THAT(planet.getVelocity().length(), WithinRel(5.0, 1e-5));
+}
+
+TEST_CASE("Planet negative velocity components", "[planet][velocity]") {
+    QVector3D vel(-7, -8, -9);
+    Planet planet(QVector3D(), vel, 100, 10, Qt::white);
+    
+    REQUIRE(planet.getVelocity() == vel);
+}
+
+TEST_CASE("Planet zero velocity", "[planet][velocity]") {
+    Planet planet(QVector3D(), QVector3D(0, 0, 0), 100, 10, Qt::white);
+    
+    REQUIRE(planet.getVelocity().length() == 0.0);
+}
+
+TEST_CASE("Planet setVelocity updates velocity", "[planet][velocity]") {
+    Planet planet(QVector3D(), QVector3D(1, 1, 1), 100, 10, Qt::white);
+    
+    QVector3D newVel(5, 6, 7);
+    planet.setVelocity(newVel);
+    
+    REQUIRE(planet.getVelocity() == newVel);
+}
+
+// ============================================================================
+// Core: Planet/Sun Mass Getter/Setter Tests (31-37)
+// ============================================================================
+
+TEST_CASE("Planet getMass returns correct mass", "[planet][mass]") {
+    double testMass = 2500.0;
+    Planet planet(QVector3D(), QVector3D(), testMass, 10, Qt::white);
+    
+    REQUIRE(planet.getMass() == testMass);
+}
+
+TEST_CASE("Sun with gravitational mass", "[sun][mass]") {
+    Sun sun(QVector3D(), 1000000.0, 40, Qt::yellow);
+    
+    REQUIRE(sun.getMass() == 1000000.0);
+}
+
+TEST_CASE("Planet mass same as SUN_MASS constant", "[planet][mass]") {
+    Planet planet(QVector3D(), QVector3D(), 1000.0, 20, Qt::blue);
+    
+    REQUIRE(planet.getMass() == 1000.0);
+}
+
+TEST_CASE("Very small planet mass", "[planet][mass]") {
+    Planet planet(QVector3D(), QVector3D(), 0.001, 1, Qt::white);
+    
+    REQUIRE(planet.getMass() == 0.001);
+}
+
+TEST_CASE("Very large sun mass", "[sun][mass]") {
+    Sun sun(QVector3D(), 1e15, 100, Qt::yellow);
+    
+    REQUIRE(sun.getMass() == 1e15);
+}
+
+TEST_CASE("Sun setMass updates mass", "[sun][mass]") {
+    Sun sun(QVector3D(), 1e6, 50, Qt::yellow);
+    
+    sun.setMass(2e6);
+    REQUIRE(sun.getMass() == 2e6);
+}
+
+// ============================================================================
+// Core: Planet/Sun Radius Tests (38-43)
+// ============================================================================
+
+TEST_CASE("Planet getRadius returns correct radius", "[planet][radius]") {
+    double testRadius = 75.5;
+    Planet planet(QVector3D(), QVector3D(), 1000, testRadius, Qt::white);
+    
+    REQUIRE(planet.getRadius() == testRadius);
+}
+
+TEST_CASE("Sun radius from constant", "[sun][radius]") {
+    Sun sun(QVector3D(), 1000000, 40, Qt::yellow);
+    
+    REQUIRE(sun.getRadius() == 40);
+}
+
+TEST_CASE("Planet radius from constant", "[planet][radius]") {
+    Planet planet(QVector3D(), QVector3D(), 1000, 20, Qt::blue);
+    
+    REQUIRE(planet.getRadius() == 20);
+}
+
+TEST_CASE("Very small planet radius", "[planet][radius]") {
+    Planet planet(QVector3D(), QVector3D(), 100, 0.1, Qt::white);
+    
+    REQUIRE(planet.getRadius() == 0.1);
+}
+
+TEST_CASE("Very large sun radius", "[sun][radius]") {
+    Sun sun(QVector3D(), 1e20, 1000000, Qt::yellow);
+    
+    REQUIRE(sun.getRadius() == 1000000);
+}
+
+// ============================================================================
+// Core: Planet/Sun Color Tests (44-50)
+// ============================================================================
+
+TEST_CASE("Planet color - Blue", "[planet][color]") {
+    Planet planet(QVector3D(), QVector3D(), 100, 10, Qt::blue);
+    
+    REQUIRE(planet.getColor() == Qt::blue);
+}
+
+TEST_CASE("Sun color - Yellow", "[sun][color]") {
+    Sun sun(QVector3D(), 1e6, 50, Qt::yellow);
+    
+    REQUIRE(sun.getColor() == Qt::yellow);
+}
+
+TEST_CASE("Planet color - Red", "[planet][color]") {
+    Planet planet(QVector3D(), QVector3D(), 100, 10, Qt::red);
+    
+    REQUIRE(planet.getColor() == Qt::red);
+}
+
+TEST_CASE("Planet color - Green", "[planet][color]") {
+    Planet planet(QVector3D(), QVector3D(), 100, 10, Qt::green);
+    
+    REQUIRE(planet.getColor() == Qt::green);
+}
+
+TEST_CASE("Planet with custom color", "[planet][color]") {
+    QColor custom(255, 128, 64);
+    Planet planet(QVector3D(), QVector3D(), 100, 10, custom);
+    
+    REQUIRE(planet.getColor() == custom);
+}
+
+TEST_CASE("Sun with custom color", "[sun][color]") {
+    QColor custom(255, 200, 100);
+    Sun sun(QVector3D(), 1e6, 50, custom);
+    
+    REQUIRE(sun.getColor() == custom);
+}
+
+// ============================================================================
+// Core: Planet/Sun Name Tests (51-56)
+// ============================================================================
+
+TEST_CASE("Sun default name is Sun", "[sun][name]") {
+    Sun sun(QVector3D(), 1e6, 50, Qt::yellow);
+    
+    REQUIRE(sun.getName() == "Sun");
+}
+
+TEST_CASE("Planet with name", "[planet][name]") {
+    Planet earth(QVector3D(100, 0, 0), QVector3D(), 1000, 10, Qt::blue, "Earth");
+    
+    REQUIRE(earth.getName() == "Earth");
+}
+
+TEST_CASE("Planet default name is empty", "[planet][name]") {
+    Planet planet(QVector3D(), QVector3D(), 1000, 10, Qt::white);
+    
+    REQUIRE(planet.getName() == "");
+}
+
+TEST_CASE("All solar system planets have unique names", "[planet][name]") {
+    Planet mercury(QVector3D(), QVector3D(), 1000, 10, Qt::gray, "Mercury");
+    Planet venus(QVector3D(), QVector3D(), 1000, 10, QColor(255, 200, 100), "Venus");
+    Planet earth(QVector3D(), QVector3D(), 1000, 10, Qt::blue, "Earth");
+    Planet mars(QVector3D(), QVector3D(), 1000, 10, QColor(200, 100, 50), "Mars");
+    
+    REQUIRE(mercury.getName() == "Mercury");
+    REQUIRE(venus.getName() == "Venus");
+    REQUIRE(earth.getName() == "Earth");
+    REQUIRE(mars.getName() == "Mars");
+    REQUIRE(mercury.getName() != venus.getName());
+    REQUIRE(venus.getName() != earth.getName());
+    REQUIRE(earth.getName() != mars.getName());
+}
+
+TEST_CASE("Planet name can be updated", "[planet][name]") {
+    Planet planet(QVector3D(), QVector3D(), 1000, 10, Qt::blue, "Earth");
+    
+    planet.setName("New Planet");
+    REQUIRE(planet.getName() == "New Planet");
+}
