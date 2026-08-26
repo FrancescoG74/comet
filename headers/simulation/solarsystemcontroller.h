@@ -17,10 +17,6 @@ public:
     void handleMouseMove(QMouseEvent* event);
     void handleMouseRelease(QMouseEvent* event);
     void handleWheel(QWheelEvent* event);
-
-    // Controller methods for adding/removing planets
-    void addPlanet(const Planet& planet);
-    void removePlanet(int index);
 private:
     SolarSystem* system;
 };

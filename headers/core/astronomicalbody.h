@@ -45,24 +45,25 @@ public:
     QVector3D getVelocity() const { return vel; }
     void setVelocity(const QVector3D& velocity) { vel = velocity; }
     
-    // Orbital parameters (set at initialization for visualization)
-    void setOrbitalParams(double sma, double ecc, double incl, double sunPosX) {
+    // Osculating orbit shape/orientation (set every frame for visualization), derived from
+    // the current real position+velocity so the drawn orbit always passes through the body.
+    void setOrbitalParams(double sma, double ecc, const QVector3D& periapsisDir, const QVector3D& perpDir) {
         semiMajorAxis = sma;
         eccentricity = ecc;
-        inclination = incl;
-        sunX = sunPosX;
+        periapsisDirection = periapsisDir;
+        perpendicularDirection = perpDir;
     }
     double getSemiMajorAxis() const { return semiMajorAxis; }
     double getEccentricity() const { return eccentricity; }
-    double getInclination() const { return inclination; }
-    double getSunX() const { return sunX; }
+    QVector3D getPeriapsisDirection() const { return periapsisDirection; }
+    QVector3D getPerpendicularDirection() const { return perpendicularDirection; }
     
 private:
     QVector3D vel;
     double semiMajorAxis = 0;
     double eccentricity = 0;
-    double inclination = 0;
-    double sunX = 0;
+    QVector3D periapsisDirection = QVector3D(1, 0, 0);
+    QVector3D perpendicularDirection = QVector3D(0, 1, 0);
 };
 
 // Concrete class for the sun - static, no velocity

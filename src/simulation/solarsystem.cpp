@@ -14,6 +14,53 @@
 #include "solarsimconstants.h"
 #include "solarsystem.h"
 #include "solarsystemcontroller.h"
+#include "orbitalelements.h"
+
+namespace {
+
+// Static astronomical data for the 8 real planets rendered by the simulation.
+// Position/velocity are no longer stored here: real positions come from
+// Astronomy Engine for the current simulated date/time.
+struct PlanetMeta {
+    astro_body_t body;
+    double semiMajorAxis_AU;   // Used only to draw the faint reference orbit ellipse
+    double eccentricity;
+    double massEarthRatios;
+    double radiusEarthRatios;
+    QColor color;
+    QString name;
+};
+
+const std::vector<PlanetMeta>& planetTable() {
+    static const std::vector<PlanetMeta> table = {
+        { BODY_MERCURY, 0.387,  0.206, 0.055, 0.383, QColor(169, 169, 169), "Mercury" },
+        { BODY_VENUS,   0.723,  0.007, 0.815, 0.949, QColor(255, 200, 100), "Venus" },
+        { BODY_EARTH,   1.0,    0.017, 1.0,   1.0,   QColor(70, 120, 255),  "Earth" },
+        { BODY_MARS,    1.524,  0.093, 0.107, 0.532, QColor(200, 100, 50),  "Mars" },
+        { BODY_JUPITER, 5.203,  0.049, 317.8, 10.97, QColor(180, 140, 80),  "Jupiter" },
+        { BODY_SATURN,  9.537,  0.056, 95.2,  9.14,  QColor(220, 200, 100), "Saturn" },
+        { BODY_URANUS,  19.191, 0.047, 14.5,  3.98,  QColor(100, 180, 200), "Uranus" },
+        { BODY_NEPTUNE, 30.069, 0.009, 17.1,  3.86,  QColor(50, 100, 200),  "Neptune" }
+    };
+    return table;
+}
+
+// Rotates an EQJ (equatorial J2000) Cartesian vector into the ecliptic frame,
+// which keeps the visualization close to a top-down view of the solar system.
+QVector3D eqjToEclipticAU(double x, double y, double z, astro_time_t t) {
+    astro_vector_t v{ASTRO_SUCCESS, x, y, z, t};
+    astro_ecliptic_t ecl = Astronomy_Ecliptic(v);
+    return QVector3D(ecl.vec.x, ecl.vec.y, ecl.vec.z);
+}
+
+} // namespace
+
+void SolarSystem::resizeEvent(QResizeEvent *event) {
+    QWidget::resizeEvent(event);
+    // Re-center the Sun/planets/moons on the new size even while the simulation is paused.
+    updateCelestialPositions();
+    update();
+}
 
 void SolarSystem::wheelEvent(QWheelEvent *event) {
     handleWheel(event);
@@ -159,25 +206,39 @@ void SolarSystem::paintEvent(QPaintEvent *) {
         p.drawLine(axes2D[0], axes2D[3]);
     }
     p.setPen(oldPen);
-    // Draw orbital paths (faint ellipses)
+    // Draw orbital paths, rotated through the same 3D view transform as the planets.
+    // The orbit shape/orientation is the body's current osculating ellipse (derived from
+    // its real position+velocity in updateCelestialPositions), so the path always passes
+    // through the body's actual current position instead of assuming a fixed orientation.
+    // Each sampled radius is log-scaled individually (like the real planet position) since
+    // log-scaling a distance is not the same as log-scaling an already-computed ellipse.
     p.setPen(QPen(QColor(100, 100, 100, 100), 1, Qt::DashLine));
+    constexpr int orbitSegments = 90;
     for (const auto& planet : planets) {
-        double a = planet.getSemiMajorAxis();
+        double smaAU = planet.getSemiMajorAxis();
         double e = planet.getEccentricity();
-        double b = a * std::sqrt(1.0 - e*e);
-        double c = e * a;
+        QVector3D pHat = planet.getPeriapsisDirection();
+        QVector3D qHat = planet.getPerpendicularDirection();
         
-        if (a > 0 && b > 0) {
-            // Orbital ellipse center (sun at left focus)
-            double ellipseCenterX = planet.getSunX() + c;
-            QPointF ellipseCenter = QPointF(ellipseCenterX, center.y()) - QPointF(cameraOffset.x(), cameraOffset.y());
-            
-            // Draw ellipse (note: QRect takes top-left corner)
-            QRectF ellipseRect(ellipseCenter.x() - a * zoomFactor, 
-                              ellipseCenter.y() - b * zoomFactor,
-                              2 * a * zoomFactor, 
-                              2 * b * zoomFactor);
-            p.drawEllipse(ellipseRect);
+        if (smaAU > 0) {
+            QPointF prevPt;
+            bool havePrev = false;
+            for (int i = 0; i <= orbitSegments; ++i) {
+                double t = qDegreesToRadians(360.0 * i / orbitSegments);
+                // True-anomaly polar orbit equation, measured from the real periapsis direction.
+                double rAU = smaAU * (1.0 - e * e) / (1.0 + e * std::cos(t));
+                double rPixels = screenAuDistance(rAU);
+                QVector3D orbitDir = pHat * std::cos(t) + qHat * std::sin(t);
+                QVector3D orbitPoint = orbitDir * rPixels;
+                QVector3D rotated = rot.map(orbitPoint);
+                QPointF screenPt = QPointF(rotated.x(), rotated.y()) * zoomFactor
+                                  + center - QPointF(cameraOffset.x(), cameraOffset.y());
+                if (havePrev && isValidPoint(prevPt) && isValidPoint(screenPt)) {
+                    p.drawLine(prevPt, screenPt);
+                }
+                prevPt = screenPt;
+                havePrev = true;
+            }
         }
     }
     p.setPen(oldPen);
@@ -203,10 +264,12 @@ void SolarSystem::paintEvent(QPaintEvent *) {
         renderQueue.push_back({&planet, false, false, ppos, ppos.z()});
     }
     
-    // Add all satellites to render queue
-    for (const auto& satellite : satellites) {
-        QVector3D spos = rot.map(satellite.getPosition() - QVector3D(width()/2, height()/2, 0));
-        renderQueue.push_back({&satellite, false, true, spos, spos.z()});
+    // Add all satellites to render queue (unless the user hid them)
+    if (showSatellites) {
+        for (const auto& satellite : satellites) {
+            QVector3D spos = rot.map(satellite.getPosition() - QVector3D(width()/2, height()/2, 0));
+            renderQueue.push_back({&satellite, false, true, spos, spos.z()});
+        }
     }
     
     // Sort by depth: farther objects (higher z) first, closer objects (lower z) last
@@ -224,8 +287,8 @@ void SolarSystem::paintEvent(QPaintEvent *) {
         
         double radius;
         if (renderData.isSun) {
-            // Sun uses its astronomical radius directly
-            radius = body.getRadius() * SolarSimConstants::DISPLAY_SCALE * zoomFactor * depth;
+            // Scaled to stay proportionate to Mercury's orbit; see updateCelestialPositions().
+            radius = sunDisplayRadius * zoomFactor * depth;
         } else if (renderData.isSatellite) {
             // Satellites: Use even smaller radius than planets
             double radiusRatio = body.getRadius() / SolarSimConstants::PLANET_RADIUS;
@@ -320,56 +383,116 @@ void SolarSystem::paintEvent(QPaintEvent *) {
 
 
 void SolarSystem::advance() {
-    for (auto& planet : planets) {
-        QVector3D r = sun.getPosition() - planet.getPosition();
-        double dist = r.length();
-        if (dist < 1) dist = 1;
-        double force = SolarSimConstants::G * sun.getMass() * planet.getMass() / (dist * dist);
-        QVector3D acc = r.normalized() * (force / planet.getMass());
-        // Apply speed multiplier to acceleration
-        QVector3D newVel = planet.getVelocity() + acc * SolarSimConstants::TIME_STEP * speedMultiplier;
-        planet.setVelocity(newVel);
-        QVector3D newPos = planet.getPosition() + newVel * SolarSimConstants::TIME_STEP * speedMultiplier;
-        planet.setPosition(newPos);
-    }
-    
-    // Simulate satellites orbiting around their parent planets
-    for (auto& satellite : satellites) {
-        Planet* parent = satellite.getParentPlanet();
-        if (parent) {
-            // Calculate orbital parameters
-            QVector3D r_parent = parent->getPosition() - satellite.getPosition();
-            double dist_parent = r_parent.length();
-            
-            // Target orbital distance (store in satellite or use a fixed value)
-            double targetOrbitalDist = 10.0;  // Keep moon at exactly 10 pixels from Earth
-            
-            // If distance has drifted, nudge it back to the target
-            if (dist_parent < 0.5) dist_parent = 0.5;
-            if (std::abs(dist_parent - targetOrbitalDist) > 0.5) {
-                // Maintain circular orbit: adjust position to stay at target distance
-                r_parent = r_parent.normalized() * targetOrbitalDist;
-                QVector3D targetPos = parent->getPosition() - r_parent;
-                satellite.setPosition(targetPos);
-                dist_parent = targetOrbitalDist;
-            }
-            
-            // Apply gravitational force for circular motion
-            // F = GMm/r² provides centripetal force
-            double satelliteG = SolarSimConstants::G * 100000.0;
-            double force_parent = satelliteG * parent->getMass() * satellite.getMass() / (dist_parent * dist_parent);
-            QVector3D acc = r_parent.normalized() * (force_parent / satellite.getMass());
-            
-            // Update velocity and position with physics
-            QVector3D newVel = satellite.getVelocity() + acc * SolarSimConstants::TIME_STEP * speedMultiplier;
-            satellite.setVelocity(newVel);
-            QVector3D newPos = satellite.getPosition() + newVel * SolarSimConstants::TIME_STEP * speedMultiplier;
-            satellite.setPosition(newPos);
-        }
-    }
-    
+    // Advance simulated time: at 1.0x speed, 1 simulated day passes per real second.
+    simDaysElapsed += speedMultiplier * (SolarSimConstants::TIMER_INTERVAL_MS / 1000.0)
+                      / SolarSimConstants::STEPS_PER_FRAME;
+    updateCelestialPositions();
+
     elapsed += 16;
     update();
+}
+
+double SolarSystem::screenAuDistance(double au) const {
+    double maxDisplayDist = ((width() / 2) - SolarSimConstants::MARGIN);
+    double maxAU = 30.0; // Neptune's semi-major axis
+    double displayScale = maxDisplayDist / std::log(1.0 + maxAU);
+    return std::log(1.0 + au) * displayScale;
+}
+
+void SolarSystem::updateCelestialPositions() {
+    QPointF center(width() / 2, height() / 2);
+
+    // The Sun sits at the heliocentric origin; keep it pinned to the live window
+    // center so it tracks layout/resize changes instead of the size at construction time.
+    sun.setPosition(QVector3D(center.x(), center.y(), 0));
+
+    // Cap the Sun's visual size relative to Mercury's (innermost planet's) orbit radius so it
+    // doesn't visually swallow the first orbit; also keeps it correctly scaled on resize.
+    double mercuryOrbitPx = screenAuDistance(planetTable().front().semiMajorAxis_AU);
+    sunDisplayRadius = std::max(6.0, mercuryOrbitPx * 0.35);
+
+    astro_time_t simTime = Astronomy_AddDays(epochTime, simDaysElapsed);
+    double muSun = Astronomy_MassProduct(BODY_SUN); // AU^3/day^2
+
+    Planet* earthPtr = nullptr;
+    Planet* jupiterPtr = nullptr;
+    Planet* saturnPtr = nullptr;
+
+    const auto& table = planetTable();
+    for (int i = 0; i < planets.size() && i < static_cast<int>(table.size()); ++i) {
+        Planet& planet = planets[i];
+        const PlanetMeta& meta = table[i];
+
+        astro_state_vector_t state = Astronomy_HelioState(meta.body, simTime);
+        QVector3D rVec = eqjToEclipticAU(state.x, state.y, state.z, simTime);
+        QVector3D vVec = eqjToEclipticAU(state.vx, state.vy, state.vz, simTime);
+        double rAu = rVec.length();
+        QVector3D dir = rAu > 1e-9 ? rVec / rAu : QVector3D(1, 0, 0);
+        double pixelR = screenAuDistance(rAu);
+
+        planet.setPosition(QVector3D(center.x() + dir.x() * pixelR,
+                                      center.y() + dir.y() * pixelR,
+                                      dir.z() * pixelR));
+
+        // Osculating orbit (derived from the current real position+velocity) so the drawn
+        // reference orbit always passes through the body's actual current position, instead
+        // of assuming a fixed periapsis orientation.
+        OsculatingElements elements = computeOsculatingElements(rVec, vVec, muSun);
+        planet.setOrbitalParams(elements.semiMajorAxisAU, elements.eccentricity,
+                                 elements.periapsisDirection, elements.perpendicularDirection);
+
+        if (meta.name == "Earth") earthPtr = &planet;
+        else if (meta.name == "Jupiter") jupiterPtr = &planet;
+        else if (meta.name == "Saturn") saturnPtr = &planet;
+    }
+
+    int satIdx = 0;
+    constexpr double moonPixelDist = 10.0;
+
+    // Earth's Moon: real ephemeris direction, artistic fixed display distance.
+    if (earthPtr && satIdx < satellites.size()) {
+        astro_vector_t geo = Astronomy_GeoMoon(simTime);
+        QVector3D dirVec = eqjToEclipticAU(geo.x, geo.y, geo.z, simTime);
+        double len = dirVec.length();
+        QVector3D dir = len > 1e-9 ? dirVec / len : QVector3D(1, 0, 0);
+        satellites[satIdx].setPosition(earthPtr->getPosition() + dir * moonPixelDist);
+        ++satIdx;
+    }
+
+    // Jupiter's 4 Galilean moons: real ephemeris positions from Astronomy_JupiterMoons.
+    if (jupiterPtr) {
+        astro_jupiter_moons_t jm = Astronomy_JupiterMoons(simTime);
+        const astro_state_vector_t* moons[4] = {&jm.io, &jm.europa, &jm.ganymede, &jm.callisto};
+        const double pixelDist[4] = {8.0, 12.0, 16.0, 22.0};
+        for (int i = 0; i < 4 && satIdx < satellites.size(); ++i, ++satIdx) {
+            QVector3D dirVec = eqjToEclipticAU(moons[i]->x, moons[i]->y, moons[i]->z, simTime);
+            double len = dirVec.length();
+            QVector3D dir = len > 1e-9 ? dirVec / len : QVector3D(1, 0, 0);
+            satellites[satIdx].setPosition(jupiterPtr->getPosition() + dir * pixelDist[i]);
+        }
+    }
+
+    // Saturn's 7 main moons: Astronomy Engine has no ephemeris model for them, so their
+    // motion is approximated with a simple circular orbit at their real orbital period.
+    if (saturnPtr) {
+        struct SaturnMoon { double periodDays; double pixelDist; double initialPhaseDeg; };
+        static const SaturnMoon saturnMoons[7] = {
+            {0.942,  6.0,  0.0},   // Mimas
+            {1.370,  7.5,  51.4},  // Enceladus
+            {1.888,  9.0,  102.8}, // Tethys
+            {2.737,  10.5, 154.2}, // Dione
+            {4.518,  13.0, 205.6}, // Rhea
+            {15.945, 20.0, 257.0}, // Titan
+            {79.33,  35.0, 308.4}  // Iapetus
+        };
+        for (const auto& m : saturnMoons) {
+            if (satIdx >= satellites.size()) break;
+            double angle = qDegreesToRadians(m.initialPhaseDeg) + qDegreesToRadians(360.0) * (simDaysElapsed / m.periodDays);
+            QVector3D dir(std::cos(angle), std::sin(angle), 0.0);
+            satellites[satIdx].setPosition(saturnPtr->getPosition() + dir * m.pixelDist);
+            ++satIdx;
+        }
+    }
 }
 
 void SolarSystem::keyPressEvent(QKeyEvent *event) {
@@ -384,265 +507,78 @@ void SolarSystem::handleKeyPress(QKeyEvent *event) {
 void SolarSystem::initBodies() {
     sun = Sun(QVector3D(width()/2, height()/2, 0), SolarSimConstants::SUN_MASS, SolarSimConstants::SUN_RADIUS, Qt::yellow);
     sun.setSprite("../assets/sun-blasts-a-m66-flare.jpg");
+
+    // Reset simulated time to "now": real ephemeris positions are computed for this epoch.
+    epochTime = Astronomy_CurrentTime();
+    simDaysElapsed = 0.0;
+
     planets.clear();
-    
-    // Display scale: Use logarithmic scaling for better distribution of inner/outer planets
-    // Linear scale compresses inner planets. Logarithmic scale spreads them out.
-    // displayDist = log(1 + distance_AU) * scale
-    double maxDisplayDist = ((width()/2) - SolarSimConstants::MARGIN);
-    double maxAU = 30.0; // Neptune's semi-major axis
-    double displayScale = maxDisplayDist / std::log(1.0 + maxAU); // scale factor for log scale
-    
-    auto logScale = [displayScale](double au) {
-        return std::log(1.0 + au) * displayScale;
-    };
-    
-    QPointF center(width()/2, height()/2);
-    
-    struct PlanetParams {
-        // Orbital parameters (real solar system values)
-        double semiMajorAxis_AU;  // Semi-major axis in Astronomical Units
-        double eccentricity;       // Orbital eccentricity
-        double inclination_deg;    // Orbital inclination (degrees)
-        double meanAnomaly_deg;    // Mean anomaly at epoch (starting angle)
-        
-        // Physical properties (relative to Earth)
-        double massEarthRatios;    // Mass relative to Earth
-        double radiusEarthRatios;  // Radius relative to Earth
-        
-        QColor color;
-        QString name;
-    };
-    
-    // Real solar system data
-    std::vector<PlanetParams> planetParams = {
-        // Mercury: 0.387 AU, high eccentricity, gray
-        { 0.387, 0.206, 7.0,   0,   0.055, 0.383, QColor(169, 169, 169), "Mercury" },
-        // Venus: 0.723 AU, low eccentricity, yellowish
-        { 0.723, 0.007, 3.39,  45,  0.815, 0.949, QColor(255, 200, 100), "Venus" },
-        // Earth: 1.0 AU, reference, blue
-        { 1.0,   0.017, 0.0,   90,  1.0,   1.0,   QColor(70, 120, 255),  "Earth" },
-        // Mars: 1.524 AU, moderate eccentricity, reddish
-        { 1.524, 0.093, 1.85,  135, 0.107, 0.532, QColor(200, 100, 50),  "Mars" },
-        // Jupiter: 5.203 AU, large and massive
-        { 5.203, 0.049, 2.86,  180, 317.8, 10.97, QColor(180, 140, 80),  "Jupiter" },
-        // Saturn: 9.537 AU, very large
-        { 9.537, 0.056, 2.75,  225, 95.2,  9.14,  QColor(220, 200, 100), "Saturn" },
-        // Uranus: 19.191 AU, cyan
-        { 19.191, 0.047, 0.77, 270, 14.5,  3.98,  QColor(100, 180, 200), "Uranus" },
-        // Neptune: 30.069 AU, deep blue, low eccentricity
-        { 30.069, 0.009, 1.77, 315, 17.1,  3.86,  QColor(50, 100, 200),  "Neptune" }
-    };
-    
-    double M = sun.getMass();
-    for (const auto& p : planetParams) {
-        // Convert AU to display pixels using logarithmic scale
-        // This compresses inner planets while spreading outer planets
-        double a = logScale(p.semiMajorAxis_AU);
-        double e = p.eccentricity;
-        
-        // Calculate semi-minor axis from eccentricity: b = a * sqrt(1 - e²)
-        double b = a * std::sqrt(1.0 - e*e);
-        
-        // Convert angles to radians
-        double inc_rad = qDegreesToRadians(p.inclination_deg);
-        double anom_rad = qDegreesToRadians(p.meanAnomaly_deg);
-        
-        // Position in orbital plane (ellipse): x = a*cos(θ), y = b*sin(θ)
-        // With eccentricity applied: distance from center varies
-        double cos_anom = std::cos(anom_rad);
-        double sin_anom = std::sin(anom_rad);
-        
-        // Elliptical position
-        double x_orbit = a * cos_anom;
-        double y_orbit = b * sin_anom;
-        
-        // Apply orbital inclination (rotate around x-axis for inclination)
-        // This tilts the orbital plane relative to the ecliptic
-        double x_inclined = x_orbit;
-        double y_inclined = y_orbit * std::cos(inc_rad);
-        double z_inclined = y_orbit * std::sin(inc_rad);
-        
-        // Position relative to sun (sun at one focus)
-        double c = e * a;  // distance from center to focus
-        QVector3D pos = QVector3D(center.x() + x_inclined - c, center.y() + y_inclined, z_inclined);
-        
-        // Calculate orbital velocity using vis-viva equation
-        // r is distance from sun to planet
-        double r = std::sqrt(std::pow(pos.x() - sun.getPosition().x(), 2) + 
-                            std::pow(pos.y() - sun.getPosition().y(), 2) + 
-                            std::pow(pos.z() - sun.getPosition().z(), 2));
-        
-        // v = sqrt(GM * (2/r - 1/a))
-        double v_virial = 2.0/r - 1.0/a;
-        double v = 0.0;
-        if (v_virial > 0) {
-            v = std::sqrt(SolarSimConstants::G * M * v_virial);
-        } else {
-            v = std::sqrt(SolarSimConstants::G * M / r);
-        }
-        
-        // Tangent vector in orbital plane (perpendicular to radius)
-        double tx = -b * sin_anom;
-        double ty =  a * cos_anom * std::cos(inc_rad);
-        double tz =  a * cos_anom * std::sin(inc_rad);
-        double norm = std::sqrt(tx*tx + ty*ty + tz*tz);
-        
-        if (norm > 1e-6) {
-            QVector3D tangent(tx/norm, ty/norm, tz/norm);
-            QVector3D tangentNorm = tangent.normalized();
-            QVector3D vel = tangentNorm * v;
-            
-            // Calculate realistic mass and radius
-            double mass = p.massEarthRatios * SolarSimConstants::PLANET_MASS;
-            double radius = p.radiusEarthRatios * SolarSimConstants::PLANET_RADIUS;
-            
-            Planet planet(pos, vel, mass, radius, p.color, p.name);
-            // Store orbital parameters for visualization
-            planet.setOrbitalParams(a, e, inc_rad, sun.getPosition().x());
-            planets.append(planet);
-        }
+    for (const auto& meta : planetTable()) {
+        double mass = meta.massEarthRatios * SolarSimConstants::PLANET_MASS;
+        double radius = meta.radiusEarthRatios * SolarSimConstants::PLANET_RADIUS;
+        Planet planet(sun.getPosition(), QVector3D(), mass, radius, meta.color, meta.name);
+        planets.append(planet);
     }
-    
-    // Initialize satellites (moons) orbiting planets
+
+    // Initialize satellites (moons); positions are placeholders until updateCelestialPositions() runs.
     satellites.clear();
-    
-    // Add Earth's moon
     Planet* earthPtr = nullptr;
-    for (auto& planet : planets) {
-        if (planet.getName() == "Earth") {
-            earthPtr = &planet;
-            break;
-        }
-    }
-    
-    if (earthPtr) {
-        // Moon orbital parameters (real solar system values)
-        double moonSMA = 0.00257;  // Semi-major axis in AU (approximately 384,400 km)
-        double moonEcc = 0.0549;   // Eccentricity
-        double moonMass = earthPtr->getMass() * (1.0 / 81.3);  // Moon mass relative to Earth
-        double moonRadius = earthPtr->getRadius() * 0.27;      // Moon radius relative to Earth
-        
-        // Calculate moon position at starting angle (make orbit visible on screen)
-        double moonAngle = qDegreesToRadians(45.0);  // Starting angle
-        double moonDist = 10.0;  // Very close orbit (10 pixels from Earth)
-        QVector3D moonPos = earthPtr->getPosition() + QVector3D(moonDist * std::cos(moonAngle), 
-                                                                 moonDist * std::sin(moonAngle), 0);
-        
-        // Calculate moon velocity for stable circular orbit around Earth using Newton's law
-        // For circular orbit: v = √(GM/r)
-        // Use same gravitational constant (100000×) as the physics engine
-        double satelliteG = SolarSimConstants::G * 100000.0;
-        double moonOrbitalVel = std::sqrt(satelliteG * earthPtr->getMass() / moonDist);
-        
-        // Tangential velocity relative to Earth
-        QVector3D moonVelRelative = QVector3D(-moonOrbitalVel * std::sin(moonAngle), 
-                                              moonOrbitalVel * std::cos(moonAngle), 0);
-        
-        // Moon's absolute velocity = Earth's velocity + Moon's velocity relative to Earth
-        QVector3D moonAbsoluteVel = earthPtr->getVelocity() + moonVelRelative;
-        
-        Satellite moon(moonPos, moonAbsoluteVel, moonMass, moonRadius, Qt::lightGray, earthPtr, "Moon");
-        moon.setOrbitalParams(moonSMA, moonEcc, 0, earthPtr->getPosition().x());
-        satellites.append(moon);
-    }
-    
-    // Add Jupiter's 4 main Galilean moons
     Planet* jupiterPtr = nullptr;
-    for (auto& planet : planets) {
-        if (planet.getName() == "Jupiter") {
-            jupiterPtr = &planet;
-            break;
-        }
-    }
-    
-    if (jupiterPtr) {
-        struct JupiterMoonParams {
-            double orbitalDist;    // Relative orbital distance
-            double mass;           // Relative to Jupiter's mass
-            double radius;         // Relative to Jupiter's radius
-            QColor color;
-            QString name;
-        };
-        
-        std::vector<JupiterMoonParams> jupiterMoons = {
-            { 8.0, 0.0015, 0.28, QColor(200, 150, 100), "Io" },
-            { 12.0, 0.0008, 0.25, QColor(100, 150, 200), "Europa" },
-            { 16.0, 0.0025, 0.41, QColor(150, 120, 100), "Ganymede" },
-            { 22.0, 0.0018, 0.38, QColor(120, 100, 80), "Callisto" }
-        };
-        
-        for (size_t i = 0; i < jupiterMoons.size(); ++i) {
-            const auto& moonParam = jupiterMoons[i];
-            double moonAngle = qDegreesToRadians(45.0 + i * 90.0);
-            QVector3D moonPos = jupiterPtr->getPosition() + QVector3D(moonParam.orbitalDist * std::cos(moonAngle),
-                                                                       moonParam.orbitalDist * std::sin(moonAngle), 0);
-            
-            double satelliteG = SolarSimConstants::G * 100000.0;
-            double moonOrbitalVel = std::sqrt(satelliteG * jupiterPtr->getMass() * moonParam.mass / moonParam.orbitalDist);
-            
-            QVector3D moonVelRelative = QVector3D(-moonOrbitalVel * std::sin(moonAngle),
-                                                 moonOrbitalVel * std::cos(moonAngle), 0);
-            QVector3D moonAbsoluteVel = jupiterPtr->getVelocity() + moonVelRelative;
-            
-            double moonMass = jupiterPtr->getMass() * moonParam.mass;
-            double moonRadius = jupiterPtr->getRadius() * moonParam.radius;
-            
-            Satellite jupiterMoon(moonPos, moonAbsoluteVel, moonMass, moonRadius, moonParam.color, jupiterPtr, moonParam.name);
-            jupiterMoon.setOrbitalParams(moonParam.orbitalDist, 0.0, 0, jupiterPtr->getPosition().x());
-            satellites.append(jupiterMoon);
-        }
-    }
-    
-    // Add Saturn's 7 main moons
     Planet* saturnPtr = nullptr;
     for (auto& planet : planets) {
-        if (planet.getName() == "Saturn") {
-            saturnPtr = &planet;
-            break;
+        if (planet.getName() == "Earth") earthPtr = &planet;
+        else if (planet.getName() == "Jupiter") jupiterPtr = &planet;
+        else if (planet.getName() == "Saturn") saturnPtr = &planet;
+    }
+
+    if (earthPtr) {
+        double moonMass = earthPtr->getMass() * (1.0 / 81.3);
+        double moonRadius = earthPtr->getRadius() * 0.27;
+        satellites.append(Satellite(earthPtr->getPosition(), QVector3D(), moonMass, moonRadius, Qt::lightGray, earthPtr, "Moon"));
+    }
+
+    if (jupiterPtr) {
+        struct JupiterMoonMeta { double mass; double radius; QColor color; QString name; };
+        static const std::vector<JupiterMoonMeta> jupiterMoons = {
+            { 0.0015, 0.28, QColor(200, 150, 100), "Io" },
+            { 0.0008, 0.25, QColor(100, 150, 200), "Europa" },
+            { 0.0025, 0.41, QColor(150, 120, 100), "Ganymede" },
+            { 0.0018, 0.38, QColor(120, 100, 80), "Callisto" }
+        };
+        for (const auto& m : jupiterMoons) {
+            double moonMass = jupiterPtr->getMass() * m.mass;
+            double moonRadius = jupiterPtr->getRadius() * m.radius;
+            satellites.append(Satellite(jupiterPtr->getPosition(), QVector3D(), moonMass, moonRadius, m.color, jupiterPtr, m.name));
         }
     }
-    
+
     if (saturnPtr) {
-        struct SaturnMoonParams {
-            double orbitalDist;    // Relative orbital distance
-            double mass;           // Relative to Saturn's mass
-            double radius;         // Relative to Saturn's radius
-            QColor color;
-            QString name;
+        struct SaturnMoonMeta { double mass; double radius; QColor color; QString name; };
+        static const std::vector<SaturnMoonMeta> saturnMoons = {
+            { 0.0003, 0.27, QColor(200, 180, 160), "Mimas" },
+            { 0.0007, 0.40, QColor(220, 200, 180), "Enceladus" },
+            { 0.0017, 0.49, QColor(180, 160, 140), "Tethys" },
+            { 0.0018, 0.48, QColor(160, 140, 120), "Dione" },
+            { 0.0024, 0.47, QColor(140, 130, 110), "Rhea" },
+            { 0.0225, 0.80, QColor(120, 110, 90), "Titan" },
+            { 0.0028, 0.73, QColor(100, 80, 60), "Iapetus" }
         };
-        
-        std::vector<SaturnMoonParams> saturnMoons = {
-            { 6.0, 0.0003, 0.27, QColor(200, 180, 160), "Mimas" },
-            { 7.5, 0.0007, 0.40, QColor(220, 200, 180), "Enceladus" },
-            { 9.0, 0.0017, 0.49, QColor(180, 160, 140), "Tethys" },
-            { 10.5, 0.0018, 0.48, QColor(160, 140, 120), "Dione" },
-            { 13.0, 0.0024, 0.47, QColor(140, 130, 110), "Rhea" },
-            { 20.0, 0.0225, 0.80, QColor(120, 110, 90), "Titan" },
-            { 35.0, 0.0028, 0.73, QColor(100, 80, 60), "Iapetus" }
-        };
-        
-        for (size_t i = 0; i < saturnMoons.size(); ++i) {
-            const auto& moonParam = saturnMoons[i];
-            double moonAngle = qDegreesToRadians(0.0 + i * 51.4);  // Varied angles
-            QVector3D moonPos = saturnPtr->getPosition() + QVector3D(moonParam.orbitalDist * std::cos(moonAngle),
-                                                                      moonParam.orbitalDist * std::sin(moonAngle), 0);
-            
-            double satelliteG = SolarSimConstants::G * 100000.0;
-            double moonOrbitalVel = std::sqrt(satelliteG * saturnPtr->getMass() * moonParam.mass / moonParam.orbitalDist);
-            
-            QVector3D moonVelRelative = QVector3D(-moonOrbitalVel * std::sin(moonAngle),
-                                                 moonOrbitalVel * std::cos(moonAngle), 0);
-            QVector3D moonAbsoluteVel = saturnPtr->getVelocity() + moonVelRelative;
-            
-            double moonMass = saturnPtr->getMass() * moonParam.mass;
-            double moonRadius = saturnPtr->getRadius() * moonParam.radius;
-            
-            Satellite saturnMoon(moonPos, moonAbsoluteVel, moonMass, moonRadius, moonParam.color, saturnPtr, moonParam.name);
-            saturnMoon.setOrbitalParams(moonParam.orbitalDist, 0.0, 0, saturnPtr->getPosition().x());
-            satellites.append(saturnMoon);
+        for (const auto& m : saturnMoons) {
+            double moonMass = saturnPtr->getMass() * m.mass;
+            double moonRadius = saturnPtr->getRadius() * m.radius;
+            satellites.append(Satellite(saturnPtr->getPosition(), QVector3D(), moonMass, moonRadius, m.color, saturnPtr, m.name));
         }
     }
+
+    updateCelestialPositions();
+}
+
+QDateTime SolarSystem::getSimulationDateTime() const {
+    astro_time_t simTime = Astronomy_AddDays(epochTime, simDaysElapsed);
+    astro_utc_t utc = Astronomy_UtcFromTime(simTime);
+    return QDateTime(QDate(utc.year, utc.month, utc.day),
+                      QTime(utc.hour, utc.minute, static_cast<int>(utc.second)),
+                      QTimeZone::UTC);
 }
 
 

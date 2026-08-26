@@ -2,8 +2,11 @@
 #include <QWidget>
 #include <QTimer>
 #include <QVector>
+#include <QDateTime>
+#include <QTimeZone>
 #include <memory>
 #include "astronomicalbody.h"
+#include "astronomy.h"
 
 class SolarSystemController;
 class PlanetControlWidget;
@@ -27,6 +30,7 @@ public:
     void setSimulationActive(bool active) { simulationActive = active; }
     void setSimulationSpeedMultiplier(double multiplier) { speedMultiplier = std::max(0.1, multiplier); }
     void setCameraOffset(const QVector2D& offset) { cameraOffset = offset; }
+    void setShowSatellites(bool show) { showSatellites = show; update(); }
     void resetView() {
         zoomFactor = 0.7;
         viewPitch = -35.0;
@@ -44,18 +48,14 @@ public:
     double getViewYaw() const { return viewYaw; }
     bool getRotatingView() const { return rotatingView; }
     double getSunMass() const { return sun.getMass(); }
-    bool getSimulationActive() const { return simulationActive; }
+    bool getSimulationActive() const { return simulationActive; }    bool getShowSatellites() const { return showSatellites; }
+    // Current simulated date/time, driven by real ephemeris (Astronomy Engine).
+    QDateTime getSimulationDateTime() const;
 
-    void appendPlanet(const Planet& planet) { planets.append(planet); }
-    void popBackPlanet() { if (!planets.empty()) planets.removeLast(); }
-    
-    void appendSatellite(const Satellite& satellite) { satellites.append(satellite); }
-    void popBackSatellite() { if (!satellites.empty()) satellites.removeLast(); }
-    const QVector<Satellite>& getSatellites() const { return satellites; }
-    
     PlanetControlWidget* controlWidget = nullptr;
 protected:
     void paintEvent(QPaintEvent *) override;
+    void resizeEvent(QResizeEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
@@ -67,6 +67,10 @@ private:
     void handleMousePress(QMouseEvent *event);
     void handleWheel(QWheelEvent *event);
     void advance();
+    void updateCelestialPositions();
+    // Converts a real heliocentric distance (AU) to a pixel distance using the same
+    // logarithmic compression for both actual body positions and drawn orbit paths.
+    double screenAuDistance(double au) const;
     Sun sun;
     QVector<Planet> planets;
     QVector<Satellite> satellites;  // Moons orbiting planets
@@ -75,8 +79,14 @@ private:
     bool draggingSun = false;
     QVector3D dragOffset;
     bool simulationActive = false;
+    bool showSatellites = true;
     double zoomFactor = 1.0;
-    double speedMultiplier = 0.1;  // Start 10x slower
+    double speedMultiplier = 1.0;
+    // Real-world date/time the simulation started from, and simulated days elapsed since then.
+    astro_time_t epochTime{};
+    double simDaysElapsed = 0.0;
+    // Sun's display radius in pixels (pre-zoom), kept proportionate to Mercury's orbit distance.
+    double sunDisplayRadius = 0.0;
     // 3D visual rotation
     double viewYaw = 0.0;   // rotation around Y (horizontal)
     double viewPitch = 0.0; // rotation around X (vertical)
