@@ -409,3 +409,45 @@ TEST_CASE("Planet name can be updated", "[planet][name]") {
     planet.setName("New Planet");
     REQUIRE(planet.getName() == "New Planet");
 }
+
+// ============================================================================
+// Core: Planet Osculating Orbit Parameters Tests
+// ============================================================================
+
+TEST_CASE("Planet default orbital params", "[planet][orbit]") {
+    Planet planet;
+    REQUIRE(planet.getSemiMajorAxis() == 0.0);
+    REQUIRE(planet.getEccentricity() == 0.0);
+    REQUIRE(planet.getPeriapsisDirection() == QVector3D(1, 0, 0));
+    REQUIRE(planet.getPerpendicularDirection() == QVector3D(0, 1, 0));
+}
+
+TEST_CASE("Planet setOrbitalParams stores sma and eccentricity", "[planet][orbit]") {
+    Planet planet;
+    planet.setOrbitalParams(1.524, 0.093, QVector3D(0, 1, 0), QVector3D(-1, 0, 0));
+    
+    REQUIRE_THAT(planet.getSemiMajorAxis(), WithinRel(1.524, 1e-9));
+    REQUIRE_THAT(planet.getEccentricity(), WithinRel(0.093, 1e-9));
+}
+
+TEST_CASE("Planet setOrbitalParams stores periapsis and perpendicular directions", "[planet][orbit]") {
+    Planet planet;
+    QVector3D periapsis(0, 1, 0);
+    QVector3D perpendicular(-1, 0, 0);
+    planet.setOrbitalParams(1.0, 0.017, periapsis, perpendicular);
+    
+    REQUIRE(planet.getPeriapsisDirection() == periapsis);
+    REQUIRE(planet.getPerpendicularDirection() == perpendicular);
+}
+
+TEST_CASE("Planet setOrbitalParams can be updated across frames", "[planet][orbit]") {
+    Planet planet;
+    planet.setOrbitalParams(5.203, 0.049, QVector3D(1, 0, 0), QVector3D(0, 1, 0));
+    planet.setOrbitalParams(5.204, 0.048, QVector3D(0, 0, 1), QVector3D(0, -1, 0));
+    
+    REQUIRE_THAT(planet.getSemiMajorAxis(), WithinRel(5.204, 1e-9));
+    REQUIRE_THAT(planet.getEccentricity(), WithinRel(0.048, 1e-9));
+    REQUIRE(planet.getPeriapsisDirection() == QVector3D(0, 0, 1));
+    REQUIRE(planet.getPerpendicularDirection() == QVector3D(0, -1, 0));
+}
+

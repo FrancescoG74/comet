@@ -1,8 +1,6 @@
-#include "astronomicalbody.h"
 #include "solarsystemcontroller.h"
 #include "solarsystem.h"
 #include "planetcontrolwidget.h"
-#include "solarsimconstants.h"
 #include <QWheelEvent>
 #include <QMouseEvent>
 #include <QKeyEvent>

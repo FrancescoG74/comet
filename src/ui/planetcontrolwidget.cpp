@@ -1,5 +1,3 @@
-#include <iostream>
-
 #include <memory>
 #include <QPushButton>
 #include <QSlider>
@@ -11,8 +9,7 @@
 #include <QApplication>
 #include <QTimer>
 #include <QDateTime>
-#include <cstdlib>
-#include <ctime>
+#include <QFontMetrics>
 
 #include "solarsystem.h"
 #include "planetcontrolwidget.h"
@@ -20,13 +17,12 @@
 
 PlanetControlWidget::PlanetControlWidget(SolarSystem* solarSystem, QWidget* parent)
     : QWidget(parent), system(solarSystem){
-    srand(static_cast<unsigned>(time(nullptr)));
-    
-    // Initialize simulation time to a starting date (2000-01-01 00:00:00)
-    simulationTime = QDateTime(QDate(2000, 1, 1), QTime(0, 0, 0));
-    lastUpdateTime = 0;
-    
-    timeLabel = std::make_unique<QLabel>("Date/Time: 2000-01-01 00:00:00", this);
+    // Fix this panel's width so per-second label text changes (proportional font digit
+    // widths differ slightly) never nudge the top-level window's layout/geometry.
+    setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    setFixedWidth(230);
+
+    timeLabel = std::make_unique<QLabel>("Date/Time: --", this);
     timeLabel->setStyleSheet(
         "QLabel {"
         "  background-color: #222222;"
@@ -40,11 +36,14 @@ PlanetControlWidget::PlanetControlWidget(SolarSystem* solarSystem, QWidget* pare
     );
     timeLabel->setAlignment(Qt::AlignCenter);
     timeLabel->setMinimumHeight(30);
+    // Widest possible content is a fixed-format "yyyy-MM-dd hh:mm:ss" string; lock the
+    // label's width so its sizeHint can't fluctuate as digits change every second.
+    QFontMetrics timeMetrics(timeLabel->font());
+    timeLabel->setFixedWidth(timeMetrics.horizontalAdvance("Date/Time: 0000-00-00 00:00:00") + 16);
     
-    addButton = std::make_unique<QPushButton>("Add Planet", this);
-    removeButton = std::make_unique<QPushButton>("Remove Planet", this);
     startStopButton = std::make_unique<QPushButton>("Start", this);
     quitButton = std::make_unique<QPushButton>("Quit", this);
+    toggleSatellitesButton = std::make_unique<QPushButton>("Hide Satellites", this);
     speedSlider = std::make_unique<QSlider>(Qt::Horizontal, this);
     speedLabel = std::make_unique<QLabel>("Speed: 1.0x", this);
     
@@ -55,11 +54,6 @@ PlanetControlWidget::PlanetControlWidget(SolarSystem* solarSystem, QWidget* pare
     speedSlider->setTickPosition(QSlider::TicksBelow);
     speedSlider->setTickInterval(200);
     
-    // Create horizontal layout for Add/Remove buttons
-    auto* horizontalLayout = new QHBoxLayout();
-    horizontalLayout->addWidget(addButton.get());
-    horizontalLayout->addWidget(removeButton.get());
-    
     // Create speed control layout
     auto* speedLayout = new QHBoxLayout();
     speedLayout->addWidget(speedLabel.get());
@@ -68,44 +62,22 @@ PlanetControlWidget::PlanetControlWidget(SolarSystem* solarSystem, QWidget* pare
     // Create main vertical layout
     auto* mainLayout = new QVBoxLayout(this);
     mainLayout->addWidget(timeLabel.get());  // Add time display at top
-    mainLayout->addLayout(horizontalLayout);
     mainLayout->addWidget(startStopButton.get());
     mainLayout->addWidget(quitButton.get());
+    mainLayout->addWidget(toggleSatellitesButton.get());
     mainLayout->addLayout(speedLayout);
     setLayout(mainLayout);
 
-    connect(addButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onAddPlanetClicked);
-    connect(removeButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onRemovePlanetClicked);
     connect(startStopButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onStartStopClicked);
     connect(quitButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onQuitClicked);
+    connect(toggleSatellitesButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onToggleSatellitesClicked);
     connect(speedSlider.get(), QOverload<int>::of(&QSlider::valueChanged), this, &PlanetControlWidget::onSimulationSpeedChanged);
     
     // Setup timer for updating simulation time display (every 100ms)
     timeUpdateTimer = std::make_unique<QTimer>(this);
     connect(timeUpdateTimer.get(), &QTimer::timeout, this, &PlanetControlWidget::updateSimulationTime);
     timeUpdateTimer->start(100);  // Update every 100ms
-}
-
-void PlanetControlWidget::onAddPlanetClicked()
-{
-    if (system) {
-        // Create a new planet at a random position with all required fields
-        QVector3D pos(300 + (rand() % 200), 200 + (rand() % 200), 0);
-        QVector3D vel(2, 1, 0);
-        double mass = 500;
-        double radius = 15;
-        QColor color = Qt::yellow;
-        
-        Planet newPlanet(pos, vel, mass, radius, color);
-        system->appendPlanet(newPlanet);
-    }
-}
-
-void PlanetControlWidget::onRemovePlanetClicked()
-{
-    if (system) {
-        system->popBackPlanet();
-    }
+    updateSimulationTime();
 }
 
 void PlanetControlWidget::onStartStopClicked()
@@ -114,11 +86,6 @@ void PlanetControlWidget::onStartStopClicked()
         isRunning = !isRunning;
         system->setSimulationActive(isRunning);
         startStopButton->setText(isRunning ? "Stop" : "Start");
-        
-        // Reset the time tracking when starting
-        if (isRunning) {
-            lastUpdateTime = 0;
-        }
     }
 }
 
@@ -144,44 +111,17 @@ void PlanetControlWidget::onQuitClicked()
     QApplication::quit();
 }
 
+void PlanetControlWidget::onToggleSatellitesClicked()
+{
+    if (!system) return;
+    bool nowVisible = !system->getShowSatellites();
+    system->setShowSatellites(nowVisible);
+    toggleSatellitesButton->setText(nowVisible ? "Hide Satellites" : "Show Satellites");
+}
+
 void PlanetControlWidget::updateSimulationTime()
 {
-    if (!isRunning) {
-        // Display current simulation time even when not running
-        QString dateTimeStr = simulationTime.toString("yyyy-MM-dd hh:mm:ss");
-        timeLabel->setText(QString("Date/Time: %1").arg(dateTimeStr));
-        return;
-    }
-    
-    // Get current real time in milliseconds
-    qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
-    
-    // Initialize lastUpdateTime on first call
-    if (lastUpdateTime == 0) {
-        lastUpdateTime = currentTime;
-        return;
-    }
-    
-    // Calculate elapsed real time since last update (in seconds)
-    qint64 elapsedRealMs = currentTime - lastUpdateTime;
-    double elapsedRealSeconds = elapsedRealMs / 1000.0;
-    
-    // Get current speed multiplier
-    int sliderValue = speedSlider->value();
-    double speedMultiplier = sliderValue / 100.0;
-    
-    // Calculate simulation time advancement
-    // Each real second = speedMultiplier * 86400 seconds of simulation (1 day per real second at 1x speed)
-    double simulationSecondsPerRealSecond = speedMultiplier * 86400.0;  // 1 day per real second at 1x
-    qint64 simulationSeconds = static_cast<qint64>(elapsedRealSeconds * simulationSecondsPerRealSecond);
-    
-    // Add to simulation time
-    simulationTime = simulationTime.addSecs(simulationSeconds);
-    
-    // Update display label
-    QString dateTimeStr = simulationTime.toString("yyyy-MM-dd hh:mm:ss");
+    if (!system) return;
+    QString dateTimeStr = system->getSimulationDateTime().toString("yyyy-MM-dd hh:mm:ss");
     timeLabel->setText(QString("Date/Time: %1").arg(dateTimeStr));
-    
-    // Update tracking time
-    lastUpdateTime = currentTime;
 }
