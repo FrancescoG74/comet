@@ -82,26 +82,6 @@ static inline bool isValidRadius(double r) {
     return std::isfinite(r) && r > 0;
 }
 
-// Convert black pixels to transparent in a pixmap
-// This creates a circular appearance for square images with black backgrounds
-static QPixmap makeBlackTransparent(const QPixmap& source) {
-    QImage image = source.toImage().convertToFormat(QImage::Format_ARGB32);
-    
-    for (int y = 0; y < image.height(); ++y) {
-        for (int x = 0; x < image.width(); ++x) {
-            QColor color(image.pixel(x, y));
-            // If pixel is very dark (near black), make it transparent
-            // Using luminance threshold for better results
-            int luminance = (color.red() * 299 + color.green() * 587 + color.blue() * 114) / 1000;
-            if (luminance < 30) {  // Threshold for near-black pixels
-                image.setPixelColor(x, y, QColor(0, 0, 0, 0));  // Transparent
-            }
-        }
-    }
-    
-    return QPixmap::fromImage(image);
-}
-
 // Apply non-linear scaling to planet sizes for better visibility
 // Maps realistic size ratios to visible screen sizes
 static double scalePlanetRadius(double realRadius) {
@@ -209,30 +189,25 @@ void SolarSystem::paintEvent(QPaintEvent *) {
     p.setPen(oldPen);
     
     // Painter's Algorithm: Sort sun and planets by depth (z-coordinate) for proper occlusion
-    struct CelestialRenderData {
-        const AstronomicalBody* body;
-        bool isSun;                 // Track if this is the sun
-        bool isSatellite;           // Track if this is a satellite
-        QVector3D rotatedPos;       // Position after 3D rotation
-        double z_depth;             // Z-coordinate for sorting (higher = farther)
-    };
-    
-    std::vector<CelestialRenderData> renderQueue;
-    
+    renderQueue.clear();
+    renderQueue.reserve(1 + planets.size() + (showSatellites ? satellites.size() : 0));
+
+    const QVector3D viewCenter(width() / 2.0, height() / 2.0, 0.0);
+
     // Add sun to render queue
-    QVector3D sunRotated = rot.map(sun.getPosition() - QVector3D(width()/2, height()/2, 0));
+    QVector3D sunRotated = rot.map(sun.getPosition() - viewCenter);
     renderQueue.push_back({&sun, true, false, sunRotated, sunRotated.z()});
     
     // Add all planets to render queue
     for (const auto& planet : planets) {
-        QVector3D ppos = rot.map(planet.getPosition() - QVector3D(width()/2, height()/2, 0));
+        QVector3D ppos = rot.map(planet.getPosition() - viewCenter);
         renderQueue.push_back({&planet, false, false, ppos, ppos.z()});
     }
     
     // Add all satellites to render queue (unless the user hid them)
     if (showSatellites) {
         for (const auto& satellite : satellites) {
-            QVector3D spos = rot.map(satellite.getPosition() - QVector3D(width()/2, height()/2, 0));
+            QVector3D spos = rot.map(satellite.getPosition() - viewCenter);
             renderQueue.push_back({&satellite, false, true, spos, spos.z()});
         }
     }
@@ -240,14 +215,14 @@ void SolarSystem::paintEvent(QPaintEvent *) {
     // Sort by depth: farther objects (higher z) first, closer objects (lower z) last
     std::sort(renderQueue.begin(), renderQueue.end(),
               [](const CelestialRenderData& a, const CelestialRenderData& b) {
-                  return a.z_depth > b.z_depth;  // Descending order: farthest first
+                  return a.zDepth > b.zDepth;  // Descending order: farthest first
               });
     
     // Draw all celestial bodies in sorted order (Painter's Algorithm)
     for (const auto& renderData : renderQueue) {
         const AstronomicalBody& body = *renderData.body;
         QVector3D pos = renderData.rotatedPos;
-        QPointF body2D = QPointF(pos.x(), pos.y()) * zoomFactor + QPointF(width()/2, height()/2) - QPointF(cameraOffset.x(), cameraOffset.y());
+        QPointF body2D = QPointF(pos.x(), pos.y()) * zoomFactor + QPointF(viewCenter.x(), viewCenter.y()) - QPointF(cameraOffset.x(), cameraOffset.y());
         double depth = 1.0 / std::max(0.001, 1.0 + 0.002 * pos.z());
         
         double radius;
@@ -271,14 +246,8 @@ void SolarSystem::paintEvent(QPaintEvent *) {
 
         // Draw sprite if loaded, otherwise draw colored circle
         if (body.getSprite().isLoaded()) {
-            QPixmap pixmap = body.getSprite().getPixmap();
-            
-            // For sun: apply transparency to black pixels to create circular appearance
-            if (renderData.isSun) {
-                pixmap = makeBlackTransparent(pixmap);
-            }
-            
-            QPixmap scaled = pixmap.scaledToWidth(static_cast<int>(radius * 2), Qt::SmoothTransformation);
+            // The sun's texture has a black backdrop that must be keyed out to read as a disc.
+            const QPixmap scaled = body.getSprite().scaledPixmap(static_cast<int>(radius * 2), renderData.isSun);
             p.drawPixmap(body2D.x() - radius, body2D.y() - radius, scaled);
         } else {
             if (renderData.isSun) {

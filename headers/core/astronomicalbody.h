@@ -74,39 +74,19 @@ public:
         : AstronomicalBody(pos, mass, radius, color, "Sun") {}
 };
 
-// Concrete class for satellites (moons) orbiting around a planet
+// Concrete class for satellites (moons) orbiting around a planet.
+// Positions are set absolutely by the model each frame, so no parent back-reference is kept.
 class Satellite : public AstronomicalBody {
 public:
-    Satellite() : AstronomicalBody(QVector3D(), 0, 0, Qt::gray, ""), parentPlanet(nullptr) {}
-    Satellite(const QVector3D& pos, const QVector3D& vel, double mass, double radius, QColor color, 
-              Planet* parent, const QString& name = "")
-        : AstronomicalBody(pos, mass, radius, color, name), vel(vel), parentPlanet(parent) {}
+    Satellite() : AstronomicalBody(QVector3D(), 0, 0, Qt::gray, "") {}
+    Satellite(const QVector3D& pos, const QVector3D& vel, double mass, double radius, QColor color,
+              const QString& name = "")
+        : AstronomicalBody(pos, mass, radius, color, name), vel(vel) {}
     
     QVector3D getVelocity() const { return vel; }
     void setVelocity(const QVector3D& velocity) { vel = velocity; }
     
-    // Get the parent planet this satellite orbits
-    Planet* getParentPlanet() const { return parentPlanet; }
-    void setParentPlanet(Planet* planet) { parentPlanet = planet; }
-    
-    // Orbital parameters (relative to parent planet)
-    void setOrbitalParams(double sma, double ecc, double incl, double planetPosX) {
-        semiMajorAxis = sma;
-        eccentricity = ecc;
-        inclination = incl;
-        parentPlanetX = planetPosX;
-    }
-    double getSemiMajorAxis() const { return semiMajorAxis; }
-    double getEccentricity() const { return eccentricity; }
-    double getInclination() const { return inclination; }
-    double getParentPlanetX() const { return parentPlanetX; }
-    
 private:
     QVector3D vel;
-    Planet* parentPlanet;  // Reference to the parent planet
-    double semiMajorAxis = 0;
-    double eccentricity = 0;
-    double inclination = 0;
-    double parentPlanetX = 0;  // X-coordinate of parent planet (for visualization)
 };
 

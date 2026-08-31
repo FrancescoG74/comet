@@ -3,6 +3,7 @@
 #include <QTimer>
 #include <QDateTime>
 #include <memory>
+#include <vector>
 #include "solarsystemmodel.h"
 
 class SolarSystemController;
@@ -59,6 +60,15 @@ protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
 private:
+    // One entry per body drawn this frame, depth-sorted for the Painter's Algorithm.
+    struct CelestialRenderData {
+        const AstronomicalBody* body;
+        bool isSun;
+        bool isSatellite;
+        QVector3D rotatedPos;
+        double zDepth;          // Higher = farther from the camera
+    };
+
     void handleKeyPress(QKeyEvent *event);
     void handleMouseRelease(QMouseEvent *event);
     void handleMouseMove(QMouseEvent *event);
@@ -80,5 +90,7 @@ private:
     bool rotatingView = false;
     QPoint lastMousePos;
     QVector2D cameraOffset = QVector2D(0, 0);  // Camera pan offset in screen space
+    // Retained across frames so repaints reuse the allocation instead of reallocating at 60 FPS.
+    std::vector<CelestialRenderData> renderQueue;
     std::unique_ptr<SolarSystemController> controller;
 };

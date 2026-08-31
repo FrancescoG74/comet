@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/">
+        <file>assets/sun-blasts-a-m66-flare.jpg</file>
+        <file>assets/mercury.jpeg</file>
+    </qresource>
+</RCC>

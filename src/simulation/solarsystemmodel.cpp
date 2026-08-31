@@ -56,7 +56,7 @@ void SolarSystemModel::setSimulationSpeedMultiplier(double multiplier) {
 void SolarSystemModel::initBodies(int viewWidth, int viewHeight) {
     sun = Sun(QVector3D(viewWidth / 2.0, viewHeight / 2.0, 0),
               SolarSimConstants::SUN_MASS, SolarSimConstants::SUN_RADIUS, Qt::yellow);
-    sun.setSprite("../assets/sun-blasts-a-m66-flare.jpg");
+    sun.setSprite(":/assets/sun-blasts-a-m66-flare.jpg");
 
     // Reset simulated time to "now": real ephemeris positions are computed for this epoch.
     epochTime = Astronomy_CurrentTime();
@@ -84,7 +84,7 @@ void SolarSystemModel::initBodies(int viewWidth, int viewHeight) {
     if (earthPtr) {
         double moonMass = earthPtr->getMass() * (1.0 / 81.3);
         double moonRadius = earthPtr->getRadius() * 0.27;
-        satellites.append(Satellite(earthPtr->getPosition(), QVector3D(), moonMass, moonRadius, Qt::lightGray, earthPtr, "Moon"));
+        satellites.append(Satellite(earthPtr->getPosition(), QVector3D(), moonMass, moonRadius, Qt::lightGray, "Moon"));
     }
 
     if (jupiterPtr) {
@@ -98,7 +98,7 @@ void SolarSystemModel::initBodies(int viewWidth, int viewHeight) {
         for (const auto& m : jupiterMoons) {
             double moonMass = jupiterPtr->getMass() * m.mass;
             double moonRadius = jupiterPtr->getRadius() * m.radius;
-            satellites.append(Satellite(jupiterPtr->getPosition(), QVector3D(), moonMass, moonRadius, m.color, jupiterPtr, m.name));
+            satellites.append(Satellite(jupiterPtr->getPosition(), QVector3D(), moonMass, moonRadius, m.color, m.name));
         }
     }
 
@@ -116,7 +116,7 @@ void SolarSystemModel::initBodies(int viewWidth, int viewHeight) {
         for (const auto& m : saturnMoons) {
             double moonMass = saturnPtr->getMass() * m.mass;
             double moonRadius = saturnPtr->getRadius() * m.radius;
-            satellites.append(Satellite(saturnPtr->getPosition(), QVector3D(), moonMass, moonRadius, m.color, saturnPtr, m.name));
+            satellites.append(Satellite(saturnPtr->getPosition(), QVector3D(), moonMass, moonRadius, m.color, m.name));
         }
     }
 
