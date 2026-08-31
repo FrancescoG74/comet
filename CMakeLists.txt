@@ -21,15 +21,19 @@ target_include_directories(astronomy_engine PUBLIC third_party/astronomy)
 add_executable(comet
     src/main.cpp
     headers/ui/planetcontrolwidget.h
+    headers/ui/planetcontrolcontroller.h
     headers/simulation/solarsystem.h
+    headers/simulation/solarsystemmodel.h
     headers/simulation/solarsystemcontroller.h
     headers/simulation/orbitalelements.h
     headers/core/astronomicalbody.h
     headers/core/sprite.h
     src/core/astronomicalbody.cpp
     src/simulation/solarsystem.cpp
+    src/simulation/solarsystemmodel.cpp
     src/simulation/solarsystemcontroller.cpp
     src/ui/planetcontrolwidget.cpp
+    src/ui/planetcontrolcontroller.cpp
     src/core/sprite.cpp
 )
 
@@ -49,14 +53,26 @@ add_executable(comet_tests
     tests/core/test_astronomicalbody.cpp
     tests/simulation/test_physics.cpp
     tests/simulation/test_orbitalelements.cpp
+    tests/ui/test_planetcontrolwidget.cpp
+    tests/ui/test_planetcontrolcontroller.cpp
     headers/core/astronomicalbody.h
     headers/core/sprite.h
     headers/simulation/orbitalelements.h
+    headers/simulation/solarsystem.h
+    headers/simulation/solarsystemmodel.h
+    headers/simulation/solarsystemcontroller.h
+    headers/ui/planetcontrolwidget.h
+    headers/ui/planetcontrolcontroller.h
     src/core/astronomicalbody.cpp
     src/core/sprite.cpp
+    src/simulation/solarsystem.cpp
+    src/simulation/solarsystemmodel.cpp
+    src/simulation/solarsystemcontroller.cpp
+    src/ui/planetcontrolwidget.cpp
+    src/ui/planetcontrolcontroller.cpp
 )
 
-target_link_libraries(comet_tests PRIVATE Catch2::Catch2WithMain Qt6::Core Qt6::Gui)
+target_link_libraries(comet_tests PRIVATE Catch2::Catch2WithMain Qt6::Core Qt6::Widgets Qt6::Gui astronomy_engine)
 target_include_directories(comet_tests PRIVATE 
     headers
     headers/core

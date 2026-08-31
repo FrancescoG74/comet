@@ -5,42 +5,32 @@
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QWidget>
-#include <QColor>
-#include <QApplication>
-#include <QTimer>
-#include <QDateTime>
-#include <QFontMetrics>
+#include <QFrame>
 
-#include "solarsystem.h"
 #include "planetcontrolwidget.h"
-#include "astronomicalbody.h"
 
-PlanetControlWidget::PlanetControlWidget(SolarSystem* solarSystem, QWidget* parent)
-    : QWidget(parent), system(solarSystem){
-    // Fix this panel's width so per-second label text changes (proportional font digit
-    // widths differ slightly) never nudge the top-level window's layout/geometry.
+PlanetControlWidget::PlanetControlWidget(QWidget* parent)
+    : QWidget(parent) {
+    // Fix this panel's width so button/slider layout never nudges the top-level window's
+    // geometry (the date/time label lives elsewhere now, in the top bar).
     setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
-    setFixedWidth(230);
+    setFixedWidth(180);
 
-    timeLabel = std::make_unique<QLabel>("Date/Time: --", this);
+    timeLabel = std::make_unique<QLabel>("--");
     timeLabel->setStyleSheet(
         "QLabel {"
         "  background-color: #222222;"
         "  color: #00FF00;"
         "  font-weight: bold;"
-        "  font-size: 12px;"
-        "  padding: 5px;"
+        "  font-size: 22px;"
+        "  padding: 8px;"
         "  border: 1px solid #444444;"
         "  border-radius: 3px;"
         "}"
     );
     timeLabel->setAlignment(Qt::AlignCenter);
-    timeLabel->setMinimumHeight(30);
-    // Widest possible content is a fixed-format "yyyy-MM-dd hh:mm:ss" string; lock the
-    // label's width so its sizeHint can't fluctuate as digits change every second.
-    QFontMetrics timeMetrics(timeLabel->font());
-    timeLabel->setFixedWidth(timeMetrics.horizontalAdvance("Date/Time: 0000-00-00 00:00:00") + 16);
-    
+    timeLabel->setMinimumHeight(48);
+
     startStopButton = std::make_unique<QPushButton>("Start", this);
     quitButton = std::make_unique<QPushButton>("Quit", this);
     toggleSatellitesButton = std::make_unique<QPushButton>("Hide Satellites", this);
@@ -59,69 +49,45 @@ PlanetControlWidget::PlanetControlWidget(SolarSystem* solarSystem, QWidget* pare
     speedLayout->addWidget(speedLabel.get());
     speedLayout->addWidget(speedSlider.get());
     
-    // Create main vertical layout
+    // Create main vertical layout (date/time label is placed by the caller, e.g. a top bar)
     auto* mainLayout = new QVBoxLayout(this);
-    mainLayout->addWidget(timeLabel.get());  // Add time display at top
     mainLayout->addWidget(startStopButton.get());
     mainLayout->addWidget(quitButton.get());
+
+    auto* divider = new QFrame(this);
+    divider->setFrameShape(QFrame::HLine);
+    divider->setFrameShadow(QFrame::Sunken);
+    mainLayout->addSpacing(10);
+    mainLayout->addWidget(divider);
+    mainLayout->addSpacing(10);
+
     mainLayout->addWidget(toggleSatellitesButton.get());
     mainLayout->addLayout(speedLayout);
+    mainLayout->addStretch(1);
     setLayout(mainLayout);
 
-    connect(startStopButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onStartStopClicked);
-    connect(quitButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onQuitClicked);
-    connect(toggleSatellitesButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::onToggleSatellitesClicked);
-    connect(speedSlider.get(), QOverload<int>::of(&QSlider::valueChanged), this, &PlanetControlWidget::onSimulationSpeedChanged);
-    
-    // Setup timer for updating simulation time display (every 100ms)
-    timeUpdateTimer = std::make_unique<QTimer>(this);
-    connect(timeUpdateTimer.get(), &QTimer::timeout, this, &PlanetControlWidget::updateSimulationTime);
-    timeUpdateTimer->start(100);  // Update every 100ms
-    updateSimulationTime();
+    connect(startStopButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::startStopClicked);
+    connect(quitButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::quitClicked);
+    connect(toggleSatellitesButton.get(), &QPushButton::clicked, this, &PlanetControlWidget::toggleSatellitesClicked);
+    connect(speedSlider.get(), QOverload<int>::of(&QSlider::valueChanged), this, &PlanetControlWidget::speedSliderChanged);
 }
 
-void PlanetControlWidget::onStartStopClicked()
+void PlanetControlWidget::setStartStopRunning(bool running)
 {
-    if (system) {
-        isRunning = !isRunning;
-        system->setSimulationActive(isRunning);
-        startStopButton->setText(isRunning ? "Stop" : "Start");
-    }
+    startStopButton->setText(running ? "Stop" : "Start");
 }
 
-void PlanetControlWidget::updateButtonState(bool isRunning)
+void PlanetControlWidget::setSatellitesVisibleLabel(bool visible)
 {
-    this->isRunning = isRunning;
-    startStopButton->setText(isRunning ? "Stop" : "Start");
+    toggleSatellitesButton->setText(visible ? "Hide Satellites" : "Show Satellites");
 }
 
-void PlanetControlWidget::onSimulationSpeedChanged(int value)
+void PlanetControlWidget::setSpeedLabelText(const QString& text)
 {
-    // Convert slider value (10-2000) to speed multiplier (0.1x - 20x)
-    double speedMultiplier = value / 100.0;
-    if (system) {
-        system->setSimulationSpeedMultiplier(speedMultiplier);
-    }
-    // Update label
-    speedLabel->setText(QString("Speed: %1x").arg(speedMultiplier, 0, 'f', 1));
+    speedLabel->setText(text);
 }
 
-void PlanetControlWidget::onQuitClicked()
+void PlanetControlWidget::setTimeText(const QString& text)
 {
-    QApplication::quit();
-}
-
-void PlanetControlWidget::onToggleSatellitesClicked()
-{
-    if (!system) return;
-    bool nowVisible = !system->getShowSatellites();
-    system->setShowSatellites(nowVisible);
-    toggleSatellitesButton->setText(nowVisible ? "Hide Satellites" : "Show Satellites");
-}
-
-void PlanetControlWidget::updateSimulationTime()
-{
-    if (!system) return;
-    QString dateTimeStr = system->getSimulationDateTime().toString("yyyy-MM-dd hh:mm:ss");
-    timeLabel->setText(QString("Date/Time: %1").arg(dateTimeStr));
+    timeLabel->setText(text);
 }
