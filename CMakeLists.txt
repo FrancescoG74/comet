@@ -7,7 +7,14 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_CXX_STANDARD 17)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui)
-find_package(Catch2 REQUIRED)
+
+# Google Test setup using FetchContent
+include(FetchContent)
+FetchContent_Declare(
+    googletest
+    URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+)
+FetchContent_MakeAvailable(googletest)
 
 enable_testing()
 
@@ -56,7 +63,7 @@ add_executable(comet_tests
     src/core/sprite.cpp
 )
 
-target_link_libraries(comet_tests PRIVATE Catch2::Catch2WithMain Qt6::Core Qt6::Gui)
+target_link_libraries(comet_tests PRIVATE gtest_main Qt6::Core Qt6::Gui)
 target_include_directories(comet_tests PRIVATE 
     headers
     headers/core

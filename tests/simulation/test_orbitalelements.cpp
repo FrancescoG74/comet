@@ -1,12 +1,8 @@
-#include <catch2/catch_test_macros.hpp>
-#include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <gtest/gtest.h>
 #include <QVector3D>
 #include <QtMath>
 #include <cmath>
 #include "orbitalelements.h"
-
-using Catch::Matchers::WithinRel;
-using Catch::Matchers::WithinAbs;
 
 // ============================================================================
 // Simulation: Osculating orbital elements (computeOsculatingElements)
@@ -22,7 +18,7 @@ namespace {
 constexpr double kMuSun = 0.2959122082855911e-03; // AU^3/day^2 (Sun GM, matches Astronomy Engine)
 }
 
-TEST_CASE("Circular orbit has near-zero eccentricity", "[orbit][elements]") {
+TEST(OrbitalElements, CircularOrbitHasNearZeroEccentricity) {
     double r0 = 1.0; // AU
     double vCirc = std::sqrt(kMuSun / r0);
     QVector3D rVec(r0, 0, 0);
@@ -30,11 +26,11 @@ TEST_CASE("Circular orbit has near-zero eccentricity", "[orbit][elements]") {
     
     OsculatingElements elements = computeOsculatingElements(rVec, vVec, kMuSun);
     
-    REQUIRE_THAT(elements.semiMajorAxisAU, WithinRel(r0, 1e-6));
-    REQUIRE_THAT(elements.eccentricity, WithinAbs(0.0, 1e-6));
+    EXPECT_NEAR(elements.semiMajorAxisAU, r0, 1e-6);
+    EXPECT_NEAR(elements.eccentricity, 0.0, 1e-6);
 }
 
-TEST_CASE("Elliptical orbit at periapsis recovers sma, eccentricity and direction", "[orbit][elements]") {
+TEST(OrbitalElements, EllipticalOrbitAtPeriapsisRecoversSmaEccentricityAndDirection) {
     double a = 1.524;   // Mars-like semi-major axis (AU)
     double e = 0.093;
     double rPeri = a * (1.0 - e);
@@ -44,14 +40,14 @@ TEST_CASE("Elliptical orbit at periapsis recovers sma, eccentricity and directio
     
     OsculatingElements elements = computeOsculatingElements(rVec, vVec, kMuSun);
     
-    REQUIRE_THAT(elements.semiMajorAxisAU, WithinRel(a, 1e-6));
-    REQUIRE_THAT(elements.eccentricity, WithinRel(e, 1e-6));
+    EXPECT_NEAR(elements.semiMajorAxisAU, a, 1e-6);
+    EXPECT_NEAR(elements.eccentricity, e, 1e-6);
     // At periapsis the position itself points toward periapsis.
-    REQUIRE_THAT(elements.periapsisDirection.x(), WithinAbs(1.0, 1e-6));
-    REQUIRE_THAT(elements.periapsisDirection.y(), WithinAbs(0.0, 1e-6));
+    EXPECT_NEAR(elements.periapsisDirection.x(), 1.0, 1e-6);
+    EXPECT_NEAR(elements.periapsisDirection.y(), 0.0, 1e-6);
 }
 
-TEST_CASE("Elliptical orbit at apoapsis places periapsis on the opposite side", "[orbit][elements]") {
+TEST(OrbitalElements, EllipticalOrbitAtApoapsisPlacesPeriapsisOnOppositeSide) {
     double a = 5.203;   // Jupiter-like semi-major axis (AU)
     double e = 0.049;
     double rApo = a * (1.0 + e);
@@ -61,14 +57,14 @@ TEST_CASE("Elliptical orbit at apoapsis places periapsis on the opposite side", 
     
     OsculatingElements elements = computeOsculatingElements(rVec, vVec, kMuSun);
     
-    REQUIRE_THAT(elements.semiMajorAxisAU, WithinRel(a, 1e-6));
-    REQUIRE_THAT(elements.eccentricity, WithinRel(e, 1e-6));
+    EXPECT_NEAR(elements.semiMajorAxisAU, a, 1e-6);
+    EXPECT_NEAR(elements.eccentricity, e, 1e-6);
     // At apoapsis the position points away from periapsis.
-    REQUIRE_THAT(elements.periapsisDirection.x(), WithinAbs(-1.0, 1e-6));
-    REQUIRE_THAT(elements.periapsisDirection.y(), WithinAbs(0.0, 1e-6));
+    EXPECT_NEAR(elements.periapsisDirection.x(), -1.0, 1e-6);
+    EXPECT_NEAR(elements.periapsisDirection.y(), 0.0, 1e-6);
 }
 
-TEST_CASE("Periapsis and perpendicular directions are unit length", "[orbit][elements]") {
+TEST(OrbitalElements, PeriapsisAndPerpendicularDirectionsAreUnitLength) {
     double a = 9.537; // Saturn-like
     double e = 0.056;
     double rPeri = a * (1.0 - e);
@@ -78,11 +74,11 @@ TEST_CASE("Periapsis and perpendicular directions are unit length", "[orbit][ele
     
     OsculatingElements elements = computeOsculatingElements(rVec, vVec, kMuSun);
     
-    REQUIRE_THAT(elements.periapsisDirection.length(), WithinRel(1.0, 1e-6));
-    REQUIRE_THAT(elements.perpendicularDirection.length(), WithinRel(1.0, 1e-6));
+    EXPECT_NEAR(elements.periapsisDirection.length(), 1.0, 1e-6);
+    EXPECT_NEAR(elements.perpendicularDirection.length(), 1.0, 1e-6);
 }
 
-TEST_CASE("Periapsis and perpendicular directions are orthogonal", "[orbit][elements]") {
+TEST(OrbitalElements, PeriapsisAndPerpendicularDirectionsAreOrthogonal) {
     double a = 19.191; // Uranus-like
     double e = 0.047;
     double rPeri = a * (1.0 - e);
@@ -93,10 +89,10 @@ TEST_CASE("Periapsis and perpendicular directions are orthogonal", "[orbit][elem
     OsculatingElements elements = computeOsculatingElements(rVec, vVec, kMuSun);
     double dot = QVector3D::dotProduct(elements.periapsisDirection, elements.perpendicularDirection);
     
-    REQUIRE_THAT(dot, WithinAbs(0.0, 1e-6));
+    EXPECT_NEAR(dot, 0.0, 1e-6);
 }
 
-TEST_CASE("Orbit polar equation reproduces distance at an arbitrary true anomaly", "[orbit][elements]") {
+TEST(OrbitalElements, OrbitPolarEquationReproducesDistanceAtArbitraryTrueAnomaly) {
     // Pick an orbit and a true anomaly, build the state vector analytically, then verify
     // the reconstructed osculating ellipse reproduces the same distance at that anomaly.
     double a = 30.069;  // Neptune-like semi-major axis
@@ -114,8 +110,8 @@ TEST_CASE("Orbit polar equation reproduces distance at an arbitrary true anomaly
     OsculatingElements elements = computeOsculatingElements(rVec, vVec, mu);
     
     // QVector3D uses single-precision floats internally, so allow a looser tolerance here.
-    REQUIRE_THAT(elements.semiMajorAxisAU, WithinRel(a, 1e-5));
-    REQUIRE_THAT(elements.eccentricity, WithinRel(e, 1e-4));
+    EXPECT_NEAR(elements.semiMajorAxisAU, a, 1e-5);
+    EXPECT_NEAR(elements.eccentricity, e, 1e-4);
     
     // Reconstruct distance using the extracted elements at the same true anomaly and
     // confirm it matches the original distance (this is exactly what paintEvent relies on).
@@ -126,12 +122,12 @@ TEST_CASE("Orbit polar equation reproduces distance at an arbitrary true anomaly
     double reconstructedR = elements.semiMajorAxisAU * (1.0 - elements.eccentricity * elements.eccentricity)
                            / (1.0 + elements.eccentricity * std::cos(reconstructedAnomaly));
     
-    REQUIRE_THAT(reconstructedR, WithinRel(rMag, 1e-6));
+    EXPECT_NEAR(reconstructedR, rMag, 1e-5);
 }
 
-TEST_CASE("Degenerate zero position returns default elements without crashing", "[orbit][elements]") {
+TEST(OrbitalElements, DegenerateZeroPositionReturnsDefaultElementsWithoutCrashing) {
     OsculatingElements elements = computeOsculatingElements(QVector3D(0, 0, 0), QVector3D(0, 1, 0), kMuSun);
     
-    REQUIRE(elements.semiMajorAxisAU == 0.0);
-    REQUIRE(elements.eccentricity == 0.0);
+    EXPECT_EQ(elements.semiMajorAxisAU, 0.0);
+    EXPECT_EQ(elements.eccentricity, 0.0);
 }

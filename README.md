@@ -40,22 +40,75 @@ Comet è un visualizzatore interattivo del sistema solare scritto in C++/Qt6. Le
 
 ## Dipendenze
 - Qt6 (Core, Widgets, Gui)
-- Catch2 (per unit testing)
+- Google Test (scaricato automaticamente via CMake FetchContent)
 - CMake >= 3.16
 - C++17 o superiore
+- Ninja (optional, richiesto per preset Clang/GCC)
 - Astronomy Engine (vendorizzata in `third_party/astronomy/`, nessuna installazione richiesta)
 
 ### Installazione dipendenze (Ubuntu/Debian)
 ```sh
-sudo apt install qt6-base-dev catch2
+sudo apt install qt6-base-dev ninja-build
+# Per GCC (solitamente preinstallato):
+sudo apt install build-essential
+# Per Clang:
+sudo apt install clang
 ```
 
 ### Installazione dipendenze (macOS)
 ```sh
-brew install qt6 catch2
+brew install qt6 ninja clang-format
 ```
 
+### Installazione dipendenze (Windows)
+- **MSVC**: Installare Visual Studio 2022 Community Edition
+- **Clang**: Scaricare da https://releases.llvm.org/ oppure usare Clang integrato in MSVC
+- **GCC**: MinGW-w64 da https://www.mingw-w64.org/ o scaricare tramite Chocolatey
+- **Ninja**: Scaricare da https://github.com/ninja-build/ninja/releases o `choco install ninja`
+
 ## Build
+
+### Opzione 1: Utilizzo di CMake Presets (Consigliato)
+
+I preset CMake consentono di configurare e compilare il progetto per diversi compilatori (MSVC, Clang, GCC).
+
+#### Listare i preset disponibili
+```sh
+cmake --list-presets
+```
+
+#### Configurare il progetto
+```sh
+# MSVC (Windows)
+cmake --preset msvc-debug
+cmake --preset msvc-release
+
+# Clang (richiede Ninja)
+cmake --preset clang-debug
+cmake --preset clang-release
+
+# GCC (richiede Ninja)
+cmake --preset gcc-debug
+cmake --preset gcc-release
+```
+
+#### Compilare il progetto
+```sh
+cmake --build --preset msvc-debug
+cmake --build --preset clang-release
+cmake --build --preset gcc-debug
+```
+
+#### Eseguire i test
+```sh
+ctest --preset msvc-debug
+ctest --preset clang-release
+ctest --preset gcc-debug
+```
+
+Per ulteriori informazioni sui preset, consultare [CMAKE_PRESETS.md](CMAKE_PRESETS.md).
+
+### Opzione 2: Build manuale
 ```sh
 mkdir build
 cd build
@@ -65,22 +118,22 @@ cmake --build .
 
 ### Esecuzione dell'applicazione
 ```sh
-./comet
+# Dopo il build, l'eseguibile è in build/Debug o build/Release
+./build/Debug/comet              # Windows
+./build/comet                    # Linux/macOS
 ```
 
 ### Esecuzione dei test
 ```sh
-./comet_tests
-```
+# Esecuzione diretta
+./build/Debug/comet_tests        # Windows
+./build/comet_tests              # Linux/macOS
 
-O tramite CTest:
-```sh
+# O tramite CTest
 ctest --output-on-failure
-```
 
-Per output dettagliato dei test:
-```sh
-./comet_tests --reporters compact
+# O con preset CMake
+ctest --preset msvc-debug
 ```
 
 ## Note
@@ -89,15 +142,22 @@ Per output dettagliato dei test:
 - Non è più possibile aggiungere pianeti arbitrari o spostare il Sole per alterare l'orbita: essendo posizioni reali, la simulazione mostra solo i corpi effettivamente presenti nel sistema solare.
 
 ## Test Suite
-Il progetto include una suite di test Catch2 con **93 test unitari**, organizzati per dominio:
+Il progetto include una suite di test **Google Test** con **93 test unitari**, organizzati per dominio:
 - `tests/core/test_astronomicalbody.cpp` - Costruttori, posizione, velocità, massa, raggio, colore, nome e parametri orbitali osculanti dei corpi celesti.
 - `tests/simulation/test_physics.cpp` - Costanti di simulazione, calcoli fisici, dati del sistema solare, slider di velocità e tempo simulato.
 - `tests/simulation/test_orbitalelements.cpp` - Verifica `computeOsculatingElements` (semiasse maggiore, eccentricità, direzione del periasse) contro casi Kepleriani noti (orbite circolari, al periasse/apoasse, ad anomalia vera arbitraria).
+
+### Esecuzione dei test
+- **Google Test** è scaricato automaticamente durante la configurazione CMake (FetchContent)
+- Tutti i 93 test passano su MSVC, Clang e GCC
+- Utilizzo di `EXPECT_*` macro per test framework standard
 
 ## Struttura del progetto
 ```
 comet/
 ├── CMakeLists.txt                  # Configurazione build
+├── CMakePresets.json               # Preset CMake per MSVC/Clang/GCC
+├── CMAKE_PRESETS.md                # Documentazione preset CMake
 ├── README.md                       # Questo file
 ├── third_party/
 │   └── astronomy/                  # Astronomy Engine vendorizzata (MIT license)
@@ -125,7 +185,7 @@ comet/
 │   │   └── orbitalelements.h     # Calcolo elementi orbitali osculanti (testabile)
 │   └── ui/
 │       └── planetcontrolwidget.h
-├── tests/                          # Test suite Catch2 (93 test)
+├── tests/                          # Test suite Google Test (93 test)
 │   ├── test_main.cpp
 │   ├── core/
 │   │   └── test_astronomicalbody.cpp
