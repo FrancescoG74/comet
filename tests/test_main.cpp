@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include <gtest/gtest.h>
 #include <QGuiApplication>
 
 // ============================================================================
@@ -17,3 +17,9 @@ static int argc = 1;
 static char argv0[] = "comet_tests";
 static char* argv[] = {argv0, nullptr};
 static QGuiApplication app(argc, argv);
+
+// Google Test initialization
+int main(int argc, char** argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}
